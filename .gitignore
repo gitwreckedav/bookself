@@ -1,0 +1,46 @@
+# ─────────────────────────────────────────────────────────────────
+# bookself/.gitignore
+# Files in this list are NEVER uploaded to GitHub.
+# This is the security layer that protects your credentials.
+# ─────────────────────────────────────────────────────────────────
+
+# ── OAuth credentials — never commit these ──────────────────────
+# credentials.json  = your Google Cloud app identity (treat like a password)
+# token.json        = your personal authorization token (auto-generated on first run)
+credentials.json
+token.json
+.env
+
+# ── User data — rebuilt by running fetch.py / catalog.py ─────────
+# These are local to your machine. Another user builds their own copy by syncing.
+bookself.db
+bookself.db-shm
+bookself.db-wal
+newsletters/
+assets/
+data/
+
+# ── Python ───────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+*.egg-info/
+
+# ── PyInstaller output ───────────────────────────────────────────
+dist/
+build/
+*.spec.bak
+
+# ── OS files ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor files ─────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo

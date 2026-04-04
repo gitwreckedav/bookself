@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<!--
+  bookself/app/templates/index.html
+  The single-page app shell for BookSelf.
+
+  Layout:
+    [Left pane header: ← → search ✕ ‹]
+    [Left pane nav tree               | Right pane (Action Canvas)]
+    [Left pane footer                 |                            ]
+    ↕ Draggable divider between panes
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BookSelf</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+  <div id="app">
+
+    <!-- ── Main two-pane layout ────────────────────────────────── -->
+    <div id="main-layout">
+
+      <!-- LEFT PANE: header + nav tree + footer -->
+      <aside id="left-pane">
+
+        <!-- Left pane header: nav buttons + search bar conjoined -->
+        <div id="left-pane-header">
+          <button id="btn-back"    class="nav-btn" title="Go back"    disabled>←</button>
+          <button id="btn-forward" class="nav-btn" title="Go forward" disabled>→</button>
+          <input
+            type="text"
+            id="search-input"
+            placeholder="Search library..."
+            autocomplete="off"
+            spellcheck="false"
+          >
+          <span id="search-clear" title="Clear search" class="hidden">✕</span>
+          <button id="toggle-pane" title="Collapse sidebar" aria-label="Toggle sidebar">‹</button>
+        </div>
+
+        <!-- Year filter bar: quick-filter nav editions by year -->
+        <div id="year-filter-bar">
+          <button class="year-filter-btn active" data-year="all">All</button>
+          <button class="year-filter-btn" data-year="2024">2024</button>
+          <button class="year-filter-btn" data-year="2025">2025</button>
+          <button class="year-filter-btn" data-year="2026">2026</button>
+        </div>
+
+        <!-- Scrollable nav tree area -->
+        <div id="nav-tree-container">
+          <div id="nav-tree">
+            <div class="nav-loading">Loading library...</div>
+          </div>
+        </div>
+
+        <!-- Left pane footer: sync status + action buttons -->
+        <footer id="left-footer">
+          <div id="last-sync-line">
+            <span id="last-sync-label">Last sync:</span>
+            <span id="last-sync-value">—</span>
+          </div>
+          <div id="footer-buttons">
+            <button id="btn-sync" class="footer-btn" title="Sync Now">↻ Sync</button>
+            <button id="btn-settings" class="footer-btn" title="Settings">⚙ Settings</button>
+          </div>
+        </footer>
+
+      </aside>
+
+      <!-- ── Draggable resize handle between panes ────────────── -->
+      <div id="pane-divider" title="Drag to resize panes"></div>
+
+      <!-- RIGHT PANE: Action Canvas -->
+      <main id="right-pane">
+        <div id="canvas">
+          <!-- Content populated by JS -->
+        </div>
+      </main>
+
+    </div><!-- /main-layout -->
+
+    <!-- Floating expand button — shown when left pane is collapsed -->
+    <button id="btn-expand" class="hidden" title="Show sidebar">›</button>
+
+  </div><!-- /app -->
+
+  <!-- ── Context menu (right-click on nav tree items) ──────────── -->
+  <div id="context-menu" class="hidden" role="menu">
+    <ul>
+      <li id="ctx-open-folder" role="menuitem">Open in Finder</li>
+    </ul>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+
+</body>
+</html>

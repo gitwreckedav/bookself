@@ -1,0 +1,100 @@
+# ─────────────────────────────────────────────────────────────────
+# bookself/config.yaml
+#
+# This is the ONLY file you need to edit to customize BookSelf.
+# Add, remove, or modify newsletter sources here.
+# After editing, run fetch.py to pull new content.
+#
+# Two source types:
+#   type: simple  → flat newsletter, one folder, sorted by date
+#   type: series  → multiple named series within one publication
+#                   (e.g. The Ken publishes Ka-Ching, Long and Short, etc.)
+# ─────────────────────────────────────────────────────────────────
+
+settings:
+  seed_start_date: "2024-01-01"  # fetch.py --mode seed pulls from this date by default
+  db_path: bookself.db           # SQLite database filename (relative to project folder)
+  newsletters_dir: newsletters   # Folder where catalog.py saves organised HTML files
+  assets_dir: assets             # Folder where catalog.py saves extracted images
+
+sources:
+
+  # ── FINSHOTS ─────────────────────────────────────────────────────
+  # Simple daily finance newsletter. One email per day, no sub-series.
+  - name: Finshots
+    folder: finshots
+    sender: morning@finshots.in
+    type: simple
+    skip_truncated: false
+    full_content: true
+
+  # ── THE KEN ──────────────────────────────────────────────────────
+  # Premium Indian business publication with multiple named series.
+  # Each email belongs to one series (detected by scanning the email text).
+  # Paid subscriber preview emails are stored separately with a note.
+  - name: The Ken
+    folder: the-ken
+    sender: info@the-ken.com
+    type: series
+    series_detection:
+      method: html_text
+      # Detection checks email subject first (faster, more reliable), then
+      # falls back to scanning the visible body text. Case-insensitive.
+      #
+      # Optional: add  subject_marker: "..."  to a series if the text that
+      # appears in the email subject differs from the display name.
+      # Example:  name: "Long and Short"  but subject says "Long & Short"
+      #           → add  subject_marker: "Long & Short"
+      known_series:
+        - name: The Nutgraf
+          folder: the-nutgraf
+        - name: Long and Short
+          folder: long-and-short
+          subject_marker: "Long & Short"
+        - name: Ka-Ching!
+          folder: ka-ching
+        - name: Make India Competitive Again
+          folder: make-india-competitive-again
+        - name: First Principles
+          folder: first-principles
+        - name: Zero Shot
+          folder: zero-shot
+        - name: Trade Tricks
+          folder: trade-tricks
+        - name: The Collection
+          folder: the-collection
+        - name: The Spotlight
+          folder: the-spotlight
+        - name: Two by Two
+          folder: two-by-two
+        - name: 90,000 Hours
+          folder: 90000-hours
+    # Paid preview detection: The Ken sends short teaser emails to non-subscribers.
+    # Since you ARE a subscriber, you likely don't receive these at all.
+    # The old marker "Subscriber to The Ken" matched every email's footer
+    # ("Delivered to X, Subscriber to The Ken") — so it was disabled.
+    # If you ever need to detect paid previews, find text that appears ONLY
+    # in preview emails (e.g. a "Subscribe to read" CTA) and set it here.
+    # paid_preview_detection:
+    #   method: html_text
+    #   marker: "Subscribe to read the full story"
+    #   folder: paid-articles
+    #   label: "Preview only — read the full article on The Ken website"
+
+  # ── FINBOX — THE PATTERN ─────────────────────────────────────────
+  # FinBox's weekly newsletter on finance and fintech.
+  - name: FinBox — The Pattern
+    folder: finbox
+    sender: marketing@finbox.in
+    type: simple
+    skip_truncated: false
+    full_content: true
+
+  # ── JEFF SU ──────────────────────────────────────────────────────
+  # Productivity and career content from Jeff Su.
+  - name: Jeff Su
+    folder: jeff-su
+    sender: hello@jeffsu.org
+    type: simple
+    skip_truncated: false
+    full_content: true

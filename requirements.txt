@@ -1,0 +1,36 @@
+# ─────────────────────────────────────────────────────────────────
+# bookself/requirements.txt
+# Python dependencies for BookSelf.
+#
+# To install:
+#   source .venv/bin/activate       (Mac)
+#   .venv\Scripts\activate          (Windows)
+#   pip install -r requirements.txt
+#
+# Note on Python 3.14+:
+#   lxml is a C extension. If pip can't find a pre-built wheel for
+#   your Python version, it will try to compile from source (requires
+#   C build tools). If that fails, BookSelf gracefully falls back to
+#   the built-in html.parser — no action needed.
+# ─────────────────────────────────────────────────────────────────
+
+# Google Gmail API — authentication and email fetching
+google-auth>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.0.0
+
+# Web server — serves the reading UI at localhost:5000
+flask>=3.0.0
+
+# Config file parser — reads config.yaml
+pyyaml>=6.0
+
+# HTML parsing — extracts text and modifies email HTML
+beautifulsoup4>=4.12.0
+
+# Fast HTML parser (used by BeautifulSoup). Falls back to html.parser if unavailable.
+lxml>=4.9.0
+
+# HTTP requests — downloads images from newsletter URLs
+requests>=2.31.0
