@@ -22,6 +22,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 from google.oauth2.credentials import Credentials
+from google.auth.exceptions import RefreshError
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
@@ -31,9 +32,11 @@ from googleapiclient.discovery import build
 SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 
-def get_project_root():
-    """Returns the bookself project root folder."""
-    return Path(__file__).parent.parent
+def get_config_dir():
+    """Returns ~/.config/bookself — the safe, out-of-project location for credentials."""
+    config_dir = Path.home() / '.config' / 'bookself'
+    config_dir.mkdir(parents=True, exist_ok=True)
+    return config_dir
 
 
 def get_gmail_service():
@@ -47,11 +50,11 @@ def get_gmail_service():
         googleapiclient.discovery.Resource: The Gmail API service object.
 
     Raises:
-        FileNotFoundError: If credentials.json is not in the project folder.
+        FileNotFoundError: If credentials.json is not in ~/.config/bookself/.
     """
-    project_root = get_project_root()
-    credentials_path = project_root / 'credentials.json'
-    token_path = project_root / 'token.json'
+    config_dir = get_config_dir()
+    credentials_path = config_dir / 'credentials.json'
+    token_path = config_dir / 'token.json'
 
     # ── Check for credentials.json ────────────────────────────────
     if not credentials_path.exists():
@@ -61,8 +64,9 @@ def get_gmail_service():
             "    1. Go to https://console.cloud.google.com\n"
             "    2. Select your project → APIs & Services → Credentials\n"
             "    3. Download your OAuth 2.0 Client ID JSON file\n"
-            "    4. Rename it to 'credentials.json' and put it in this folder\n\n"
-            "    See README.md for detailed setup instructions."
+            f"    4. Rename it to 'credentials.json' and move it to:\n"
+            f"       {config_dir}/\n\n"
+            "    This folder is outside the project so it is never accidentally committed to git."
         )
 
     creds = None
@@ -76,8 +80,15 @@ def get_gmail_service():
         if creds and creds.expired and creds.refresh_token:
             # Token exists but expired — refresh it silently (no browser needed)
             print("  [Auth] Refreshing Gmail token...")
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+            except RefreshError:
+                # Token was revoked (common after ~7 days in Google "Testing" mode)
+                # Auto-recover: delete stale token, fall through to re-auth below
+                print("  [Auth] Token revoked or expired — re-authorizing...")
+                token_path.unlink(missing_ok=True)
+                creds = None
+        if not creds:
             # No token or couldn't refresh — open browser for first-time authorization
             print("  [Auth] Opening browser for Gmail authorization...")
             print("         Log in with your Google account and click 'Allow'.")

@@ -75,15 +75,22 @@ else
     echo "✅  Dependencies installed (without lxml — html.parser will be used)"
 fi
 
-# ── Check for credentials.json ────────────────────────────────────
+# ── Check for credentials.json (stored outside project for security) ──────────
+CREDS_DIR="$HOME/.config/bookself"
+mkdir -p "$CREDS_DIR"
 echo ""
-if [ -f "credentials.json" ]; then
-    echo "✅  credentials.json found — you're ready to sync!"
+if [ -f "$CREDS_DIR/credentials.json" ]; then
+    echo "✅  credentials.json found at ~/.config/bookself/ — you're ready to sync!"
+elif [ -f "credentials.json" ]; then
+    echo "⚠️   Found credentials.json in the project folder (old location)."
+    echo "    Moving it to ~/.config/bookself/ for security..."
+    mv credentials.json "$CREDS_DIR/credentials.json"
+    [ -f "token.json" ] && mv token.json "$CREDS_DIR/token.json"
+    echo "✅  Moved! Future syncs will use ~/.config/bookself/"
 else
     echo "⚠️   credentials.json not found."
-    echo "    You need to copy your Google OAuth credentials file into this folder."
-    echo "    File name must be exactly: credentials.json"
-    echo "    (See README.md for Google Cloud Console setup instructions)"
+    echo "    Place it at: ~/.config/bookself/credentials.json"
+    echo "    (Download from Google Cloud Console → APIs & Services → Credentials)"
 fi
 
 # ── Done ──────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@
 
         <!-- Left pane header: nav buttons + search bar conjoined -->
         <div id="left-pane-header">
+          <button id="btn-home"    class="nav-btn" title="Home">⌂</button>
           <button id="btn-back"    class="nav-btn" title="Go back"    disabled>←</button>
           <button id="btn-forward" class="nav-btn" title="Go forward" disabled>→</button>
           <input
@@ -41,12 +42,50 @@
           <button id="toggle-pane" title="Collapse sidebar" aria-label="Toggle sidebar">‹</button>
         </div>
 
-        <!-- Year filter bar: quick-filter nav editions by year -->
-        <div id="year-filter-bar">
-          <button class="year-filter-btn active" data-year="all">All</button>
-          <button class="year-filter-btn" data-year="2024">2024</button>
-          <button class="year-filter-btn" data-year="2025">2025</button>
-          <button class="year-filter-btn" data-year="2026">2026</button>
+        <!-- Filter section: date range + completion status -->
+        <div id="filter-section">
+
+          <!-- Date range filter (collapsible) -->
+          <div id="date-filter">
+            <div id="date-filter-header" class="filter-header">
+              <span id="date-filter-chevron" class="filter-chevron">›</span>
+              <span class="filter-bar-label">Date Range</span>
+              <span id="date-filter-summary" class="filter-bar-summary">All dates</span>
+            </div>
+            <div id="date-filter-body" class="filter-body hidden">
+              <div class="date-range-row">
+                <span class="date-range-label">From</span>
+                <select id="df-from-month" class="date-select"></select>
+                <select id="df-from-year"  class="date-select"></select>
+              </div>
+              <div class="date-range-row">
+                <span class="date-range-label">To</span>
+                <select id="df-to-month" class="date-select"></select>
+                <select id="df-to-year"  class="date-select"></select>
+              </div>
+              <div class="date-filter-actions">
+                <button id="df-apply">Apply</button>
+                <button id="df-clear">Clear</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Read status filter (collapsible) -->
+          <div id="read-status-filter">
+            <div id="read-filter-header" class="filter-header">
+              <span id="read-filter-chevron" class="filter-chevron">›</span>
+              <span class="filter-bar-label">Read Status</span>
+              <span id="read-filter-summary" class="filter-bar-summary">All</span>
+            </div>
+            <div id="read-filter-body" class="filter-body hidden">
+              <div id="completion-filter">
+                <button class="completion-btn active" data-read="all">All</button>
+                <button class="completion-btn" data-read="unread">Not done</button>
+                <button class="completion-btn" data-read="read">Done</button>
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <!-- Scrollable nav tree area -->
@@ -63,7 +102,9 @@
             <span id="last-sync-value">—</span>
           </div>
           <div id="footer-buttons">
-            <button id="btn-sync" class="footer-btn" title="Sync Now">↻ Sync</button>
+            <button id="btn-sync"     class="footer-btn" title="Sync Now">↻ Sync</button>
+            <button id="btn-stats"    class="footer-btn" title="Reading Stats">📈 Stats</button>
+            <button id="btn-finder"   class="footer-btn" title="Open newsletters folder in Finder">⌘ Finder</button>
             <button id="btn-settings" class="footer-btn" title="Settings">⚙ Settings</button>
           </div>
         </footer>
@@ -90,8 +131,34 @@
   <!-- ── Context menu (right-click on nav tree items) ──────────── -->
   <div id="context-menu" class="hidden" role="menu">
     <ul>
-      <li id="ctx-open-folder" role="menuitem">Open in Finder</li>
+      <li id="ctx-mark-read"   role="menuitem">Mark as read</li>
+      <li id="ctx-open-folder" role="menuitem">Reveal in Finder</li>
+      <li id="ctx-note"        role="menuitem">Create / Edit note</li>
     </ul>
+  </div>
+
+  <!-- ── Note panel (floating, right-anchored, non-blocking) ──── -->
+  <!-- The overlay is transparent + pointer-events:none so reader bar
+       buttons and the left pane stay fully clickable while the panel is open -->
+  <div id="note-modal-overlay" class="hidden">
+    <div id="note-modal">
+      <!-- Left-edge drag-to-resize handle -->
+      <div id="note-modal-resize-handle" title="Drag to resize"></div>
+      <!-- Tab strip: My Notes | AI Summary — also drag handle to reposition -->
+      <div id="note-modal-tabs">
+        <button class="note-tab active" data-tab="my_notes">✎ My Notes</button>
+        <button class="note-tab"        data-tab="ai_summary">⚡ AI Summary</button>
+      </div>
+      <div id="note-modal-body">
+        <div id="note-modal-subtitle"></div>
+        <textarea id="note-modal-textarea" placeholder="Write your notes here…"></textarea>
+        <div id="note-modal-actions">
+          <button id="note-modal-finder" title="Open note file in Finder">⌘ Show in Finder</button>
+          <button id="note-modal-cancel">Cancel</button>
+          <button id="note-modal-save">Save</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script src="/static/js/app.js"></script>

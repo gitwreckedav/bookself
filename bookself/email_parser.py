@@ -183,33 +183,57 @@ def detect_series(html_content, source_config, subject=None):
     series_detection = source_config.get('series_detection', {})
     known_series = series_detection.get('known_series', [])
 
-    # ── 1. Subject-line detection (primary, high confidence) ─────
+    # ── 1. Subject-line detection (primary, most reliable) ───────
     if subject:
         subject_upper = subject.upper()
         for series in known_series:
-            # Use subject_marker if defined, otherwise fall back to name
             marker = series.get('subject_marker') or series['name']
             if marker.upper() in subject_upper:
                 return (series['name'], series['folder'])
 
-    # ── 2. Body text detection (fallback) ────────────────────────
     soup = BeautifulSoup(html_content, HTML_PARSER)
-    visible_text = soup.get_text(separator=' ').upper()
 
-    # Check paid preview marker first (before series match)
+    # ── 2. Heading-based detection (high confidence) ──────────────
+    # Series names in <h1>/<h2>/<h3> headings are reliable: The Ken
+    # labels each article with its series in a heading. Footers and
+    # navigation menus rarely use heading tags, so this step avoids
+    # the false-positive matches that plague full-body scanning.
+    heading_text = ' '.join(
+        h.get_text(separator=' ') for h in soup.find_all(['h1', 'h2', 'h3', 'h4'])
+    ).upper()
+    for series in known_series:
+        marker = series.get('subject_marker') or series['name']
+        if marker.upper() in heading_text:
+            return (series['name'], series['folder'])
+
+    # ── 3. Body-text detection (last resort) ─────────────────────
+    # Cap at 3000 chars to skip footer cross-references. This still
+    # beats full-scan but is less reliable than headings above.
+    visible_text = soup.get_text(separator=' ')[:3000].upper()
+
+    # Paid-preview check (before series match)
     paid_config = source_config.get('paid_preview_detection', {})
     if paid_config:
         marker = paid_config.get('marker', '').upper()
         if marker and marker in visible_text:
-            paid_folder = paid_config.get('folder', 'paid-articles')
-            return ('paid-articles', paid_folder)
+            return ('paid-articles', paid_config.get('folder', 'paid-articles'))
 
+    # Find whichever series name appears EARLIEST in the text.
+    # Iterating in config order and returning the first match is WRONG:
+    # e.g. a Two-by-Two article that mentions "First Principles" later in its
+    # body would be misclassified if "First Principles" comes first in the config.
+    best_match = None
+    best_pos   = len(visible_text)
     for series in known_series:
-        series_name_upper = series['name'].upper()
-        if series_name_upper in visible_text:
-            return (series['name'], series['folder'])
+        marker = (series.get('subject_marker') or series['name']).upper()
+        pos = visible_text.find(marker)
+        if 0 <= pos < best_pos:
+            best_pos   = pos
+            best_match = series
+    if best_match:
+        return (best_match['name'], best_match['folder'])
 
-    # ── 3. No match ───────────────────────────────────────────────
+    # ── 4. No match ───────────────────────────────────────────────
     return ('unsorted', 'unsorted')
 
 

@@ -68,7 +68,8 @@ def init_db(db_path):
             has_images       INTEGER DEFAULT 0,      -- 1 if images were saved locally, 0 if not
             is_preview       INTEGER DEFAULT 0,      -- 1 if this is a paid-preview-only email
             preview_label    TEXT,                   -- Message shown in UI for preview items
-            fetched_at       TEXT NOT NULL           -- ISO datetime when this was fetched
+            fetched_at       TEXT NOT NULL,          -- ISO datetime when this was fetched
+            is_read          INTEGER DEFAULT 0       -- 1 if the user has opened/read this newsletter
         )
     ''')
 
@@ -105,6 +106,22 @@ def init_db(db_path):
             VALUES ('delete', old.id, old.title, '');
         END
     ''')
+
+    # ── Backwards-compatible migration: add is_read if missing ───
+    try:
+        cursor.execute('ALTER TABLE newsletters ADD COLUMN is_read INTEGER DEFAULT 0')
+        conn.commit()
+        print("  [DB] Migration: added is_read column.")
+    except sqlite3.OperationalError:
+        pass  # column already exists
+
+    # ── Migration: add read_at timestamp (when user marked it, not article date) ──
+    try:
+        cursor.execute('ALTER TABLE newsletters ADD COLUMN read_at TEXT')
+        conn.commit()
+        print("  [DB] Migration: added read_at column.")
+    except sqlite3.OperationalError:
+        pass  # column already exists
 
     conn.commit()
     conn.close()
@@ -304,6 +321,48 @@ def get_newsletter_by_id(db_path, newsletter_id):
     row = cursor.fetchone()
     conn.close()
     return dict(row) if row else None
+
+
+def toggle_read(db_path, newsletter_id):
+    """
+    Flip the is_read flag for a newsletter (0→1 or 1→0).
+
+    Called when the user clicks the read-dot in the nav, or when
+    a newsletter is opened for the first time (auto-mark as read).
+
+    Args:
+        db_path: Path to the database file.
+        newsletter_id: The integer ID from the newsletters table.
+
+    Returns:
+        int: The NEW value of is_read (0 or 1).
+    """
+    conn = get_connection(db_path)
+    cursor = conn.cursor()
+
+    # Read current value first
+    cursor.execute('SELECT is_read FROM newsletters WHERE id = ?', (newsletter_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return 0
+
+    new_value = 0 if row['is_read'] else 1
+    if new_value == 1:
+        # Record the exact moment the user marked it done — NOT the article publish date
+        cursor.execute(
+            "UPDATE newsletters SET is_read = 1, read_at = datetime('now') WHERE id = ?",
+            (newsletter_id,)
+        )
+    else:
+        # User un-marked it — wipe the timestamp so stats don't count it
+        cursor.execute(
+            'UPDATE newsletters SET is_read = 0, read_at = NULL WHERE id = ?',
+            (newsletter_id,)
+        )
+    conn.commit()
+    conn.close()
+    return new_value
 
 
 def search_newsletters(db_path, query):

@@ -581,6 +581,15 @@ def main():
         metavar='YYYY-MM-DD',
         help='Start date for seed mode (default: read from config.yaml seed_start_date, fallback: 2024-01-01)'
     )
+    parser.add_argument(
+        '--sender',
+        type=str,
+        default=None,
+        metavar='NAME_OR_EMAIL',
+        help='Limit sync to a single source by name or sender email '
+             '(e.g. "The Ken" or "info@the-ken.com"). '
+             'Useful for seeding a newly-added newsletter without a full resync.'
+    )
     args = parser.parse_args()
 
     print_banner(args.mode)
@@ -602,6 +611,23 @@ def main():
             # Try config.yaml first, then fall back to hardcoded default
             start_date_str = config.get('settings', {}).get('seed_start_date', '2024-01-01')
         print(f"  [Setup] Seed start date: {start_date_str}")
+
+    # ── Filter sources by --sender if provided ────────────────────
+    if args.sender:
+        all_sources = config['sources']
+        filtered = [
+            s for s in all_sources
+            if args.sender.lower() in (s['name'].lower(), s['sender'].lower())
+        ]
+        if not filtered:
+            print(f"\n❌  No source matching '{args.sender}' found in config.yaml.")
+            print(f"  Available sources:")
+            for s in all_sources:
+                print(f"    {s['name']} ({s['sender']})")
+            sys.exit(1)
+        config = dict(config)   # shallow copy so we don't mutate the global
+        config['sources'] = filtered
+        print(f"  [Setup] Sender filter: '{args.sender}' → {filtered[0]['name']} ({filtered[0]['sender']})")
 
     # ── Connect to Gmail ──────────────────────────────────────────
     print(f"\n  [Auth] Connecting to Gmail...")

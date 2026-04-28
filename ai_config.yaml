@@ -1,0 +1,6 @@
+api_key: ''
+base_url: http://localhost:11434
+max_words: 5000
+model: qwen3:8b
+provider: ollama
+summary_prompt: Summarize briefly.

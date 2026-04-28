@@ -44,3 +44,8 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+# ── Test artifacts ────────────────────────────────────────────────
+tests/tmp/
+.pytest_cache/
+*.notes.md

@@ -21,6 +21,7 @@
 import sys
 import json
 import shutil
+import sqlite3
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -42,8 +43,153 @@ from bookself.storage import extract_and_save_images, build_file_path, save_html
 
 
 # ── Paths ─────────────────────────────────────────────────────────
-DATA_DIR = PROJECT_ROOT / 'data'
-RAW_DIR  = DATA_DIR / 'raw'
+DATA_DIR       = PROJECT_ROOT / 'data'
+RAW_DIR        = DATA_DIR / 'raw'
+STATE_DIR      = DATA_DIR / 'state'
+USER_DATA_PATH = STATE_DIR / 'user_data.json'
+
+
+# ══════════════════════════════════════════════════════════════════
+# HELPERS
+# ══════════════════════════════════════════════════════════════════
+
+def _raw_file_matches_sender(raw_path, sender_lower):
+    """Return True if this raw JSON file belongs to the given sender (name or email)."""
+    try:
+        data = json.loads(raw_path.read_text(encoding='utf-8'))
+        name   = data.get('source_name',   '').lower()
+        email  = data.get('source_sender', '').lower()
+        return sender_lower in (name, email)
+    except Exception:
+        return False
+
+
+# ══════════════════════════════════════════════════════════════════
+# USER DATA PERSISTENCE (notes + read flags survive purge/seed)
+# ══════════════════════════════════════════════════════════════════
+
+def _load_user_data():
+    """Load existing user_data.json or return empty dict."""
+    if USER_DATA_PATH.exists():
+        try:
+            return json.loads(USER_DATA_PATH.read_text(encoding='utf-8'))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_user_data(data):
+    """Write user_data.json atomically."""
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    USER_DATA_PATH.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding='utf-8')
+
+
+def backup_user_data_before_purge(db_path, newsletters_dir):
+    """
+    Called immediately before full-purge deletes the DB and newsletters/.
+    Snapshots:
+      - gmail_message_id → is_read (from DB)
+      - gmail_message_id → {notes_path, notes_content} (from .notes.md files)
+    Merges with any existing user_data.json so repeated purges don't lose data.
+    """
+    existing = _load_user_data()
+
+    # 1. Collect is_read flags from DB
+    if db_path.exists():
+        try:
+            con = sqlite3.connect(db_path)
+            rows = con.execute(
+                'SELECT gmail_message_id, is_read, file_path FROM newsletters'
+            ).fetchall()
+            con.close()
+            for msg_id, is_read, file_path in rows:
+                entry = existing.setdefault(msg_id, {})
+                # Only update is_read if it was actually marked (don't demote a 1→0)
+                if is_read:
+                    entry['is_read'] = 1
+                elif 'is_read' not in entry:
+                    entry['is_read'] = 0
+                entry['file_path'] = file_path
+        except Exception as e:
+            print(f"  [UserData] Warning: could not read DB is_read flags: {e}")
+
+    # 2. Collect .notes.md files from newsletters/
+    if newsletters_dir.exists():
+        for notes_file in newsletters_dir.rglob('*.notes.md'):
+            try:
+                content = notes_file.read_text(encoding='utf-8').strip()
+                if not content:
+                    continue
+                # Find the matching DB entry by file_path
+                rel_html = str(notes_file.with_suffix('.html').relative_to(PROJECT_ROOT))
+                # Find which msg_id maps to this file_path
+                matching_id = next(
+                    (mid for mid, d in existing.items() if d.get('file_path') == rel_html),
+                    None
+                )
+                if matching_id:
+                    existing[matching_id]['notes_content'] = content
+                    existing[matching_id]['notes_rel_path'] = str(
+                        notes_file.relative_to(PROJECT_ROOT)
+                    )
+            except Exception:
+                pass
+
+    _save_user_data(existing)
+    n_read  = sum(1 for d in existing.values() if d.get('is_read'))
+    n_notes = sum(1 for d in existing.values() if d.get('notes_content'))
+    print(f"  [UserData] Backed up {n_read} read flags, {n_notes} notes → {USER_DATA_PATH}")
+
+
+def restore_user_data_after_rebuild(db_path):
+    """
+    Called after full-purge + catalog rebuild completes.
+    Re-applies is_read flags to the freshly-built DB.
+    Re-creates .notes.md files at their correct paths (looked up via gmail_message_id).
+    """
+    data = _load_user_data()
+    if not data:
+        return
+
+    restored_read  = 0
+    restored_notes = 0
+
+    try:
+        con = sqlite3.connect(db_path)
+        # Build a mapping: gmail_message_id → new file_path (post-rebuild)
+        rows = con.execute(
+            'SELECT gmail_message_id, id, file_path FROM newsletters'
+        ).fetchall()
+        id_map       = {r[0]: r[1] for r in rows}   # msg_id → db id
+        filepath_map = {r[0]: r[2] for r in rows}   # msg_id → file_path
+
+        for msg_id, entry in data.items():
+            if msg_id not in id_map:
+                continue  # Article not in rebuilt DB (e.g. pre-start-date)
+
+            # Restore is_read
+            if entry.get('is_read'):
+                con.execute(
+                    'UPDATE newsletters SET is_read = 1 WHERE gmail_message_id = ?',
+                    (msg_id,)
+                )
+                restored_read += 1
+
+            # Restore notes
+            if entry.get('notes_content'):
+                new_file_path = filepath_map[msg_id]
+                notes_path = PROJECT_ROOT / new_file_path
+                notes_path = notes_path.with_suffix('.notes.md')
+                notes_path.parent.mkdir(parents=True, exist_ok=True)
+                notes_path.write_text(entry['notes_content'], encoding='utf-8')
+                restored_notes += 1
+
+        con.commit()
+        con.close()
+    except Exception as e:
+        print(f"  [UserData] Warning: restore error: {e}")
+
+    print(f"  [UserData] Restored {restored_read} read flags, {restored_notes} notes.")
 
 
 # ══════════════════════════════════════════════════════════════════
@@ -347,6 +493,21 @@ def main():
              'Safe: data/raw/ (source of truth) is never touched. '
              'Use after changing config.yaml or detection logic.'
     )
+    parser.add_argument(
+        '--wipe-user-data',
+        action='store_true',
+        help='During --full-purge: also delete all user notes and read flags. '
+             'By default, notes and read flags are preserved across purges. '
+             'This flag opts in to a complete reset. Cannot be undone.'
+    )
+    parser.add_argument(
+        '--sender',
+        type=str,
+        default=None,
+        metavar='NAME_OR_EMAIL',
+        help='Only catalog raw files from this sender (name or email). '
+             'Used with per-sender seed sync to avoid re-processing the full library.'
+    )
     args = parser.parse_args()
     start_date = args.start_date  # e.g. "2024-01-01" or None
 
@@ -391,6 +552,17 @@ def main():
     if args.full_purge:
         print(f"\n  [Full Purge] Deleting all cataloged data...")
         print(f"  NOTE: data/raw/ is NOT touched — it is the source of truth.\n")
+
+        if args.wipe_user_data:
+            print(f"  [Full Purge] --wipe-user-data set: notes and read flags will NOT be preserved.")
+            if USER_DATA_PATH.exists():
+                USER_DATA_PATH.unlink()
+                print(f"  [Full Purge] Deleted user_data.json")
+        else:
+            # Snapshot notes + read flags BEFORE deleting anything
+            print(f"  [Full Purge] Saving user notes and read flags before purge...")
+            backup_user_data_before_purge(db_path, newsletters_dir)
+
         if db_path.exists():
             db_path.unlink()
             print(f"  [Full Purge] Deleted database: {db_path.name}")
@@ -439,6 +611,16 @@ def main():
 
     # ── Process all raw files ─────────────────────────────────────
     raw_files = sorted(RAW_DIR.glob('*.json'))
+
+    # Per-sender filter: only process files from the requested sender
+    if args.sender:
+        sender_lower = args.sender.lower()
+        raw_files = [
+            f for f in raw_files
+            if _raw_file_matches_sender(f, sender_lower)
+        ]
+        print(f"\n  [Catalog] Sender filter: '{args.sender}' → {len(raw_files)} matching file(s).")
+
     total_files = len(raw_files)
     print(f"\n  [Catalog] Found {total_files} raw file(s) to process.")
     print()
@@ -495,6 +677,11 @@ def main():
             no_html += 1
         else:
             errors += 1
+
+    # ── Restore user data after full-purge rebuild ────────────────
+    if args.full_purge and not args.wipe_user_data:
+        print(f"\n  [UserData] Restoring notes and read flags...")
+        restore_user_data_after_rebuild(db_path)
 
     # ── Summary ───────────────────────────────────────────────────
     total_in_db = get_total_count(db_path)

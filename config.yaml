@@ -98,3 +98,12 @@ sources:
     type: simple
     skip_truncated: false
     full_content: true
+
+ # ── Eye on China ──────────────────────────────────────────────────────
+  # Subtack newsletter focuing on economic developments in China
+  - name: Eye on China
+    folder: eye-on-china
+    sender: eyeonchina@substack.com
+    type: simple
+    skip_truncated: false
+    full_content: true

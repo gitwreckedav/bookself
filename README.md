@@ -63,8 +63,8 @@ data/raw/          newsletters/     localhost:5001
 git clone https://github.com/your-username/bookself.git
 cd bookself
 
-# Place credentials.json here (from Step 1)
-# Never commit this file — it's already in .gitignore
+# Place credentials.json at ~/.config/bookself/credentials.json (from Step 1)
+# It lives OUTSIDE the project folder — never committed, never at risk
 
 # Install dependencies
 bash setup.sh          # Mac / Linux
@@ -158,8 +158,8 @@ Your config and source code live in the repo. Your data (`newsletters/`, `bookse
 git clone https://github.com/your-username/bookself.git
 cd bookself
 
-# 2. Copy credentials.json from your primary machine
-#    (USB / secure transfer — never commit this file)
+# 2. Copy credentials.json to ~/.config/bookself/credentials.json
+#    (from your primary machine via USB / secure transfer — never commit this file)
 
 # 3. Install dependencies
 bash setup.sh         # Mac / Linux
@@ -228,7 +228,7 @@ bookself/
 - Designed for one person / one Gmail account — no multi-user support
 - No mobile app — browser-only, localhost
 - Requires Gmail — no IMAP or other email providers yet
-- No read/bookmark tracking stored yet (planned)
+- No scheduled sync — manual only (↻ Sync button or terminal)
 
 ---
 
