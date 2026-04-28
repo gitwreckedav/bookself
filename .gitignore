@@ -49,3 +49,4 @@ desktop.ini
 tests/tmp/
 .pytest_cache/
 *.notes.md
+AUDIT.md
