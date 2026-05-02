@@ -1268,6 +1268,15 @@ def api_reading_stats():
            GROUP BY d ORDER BY d ASC'''
     ).fetchall()
 
+    # Average words read by day of week (0=Sun … 6=Sat)
+    words_by_dow_rows = con.execute(
+        '''SELECT CAST(strftime('%w', date(read_at)) AS INTEGER) as dow,
+                  ROUND(AVG(word_count)) as avg_words
+           FROM newsletters
+           WHERE is_read=1 AND read_at IS NOT NULL AND word_count > 0
+           GROUP BY dow'''
+    ).fetchall()
+
     # Streak: consecutive days where user marked at least 1 newsletter done
     read_dates = set(
         r[0] for r in con.execute(
@@ -1310,6 +1319,7 @@ def api_reading_stats():
         'read_by_month':       [{'month': r['month'], 'count': r['cnt']}
                                 for r in reversed(list(read_by_month))],
         'read_by_date':        [{'date': r[0], 'count': r[1]} for r in read_by_date_rows],
+        'words_by_dow':        [{'dow': r[0], 'avg': int(r[1] or 0)} for r in words_by_dow_rows],
     })
 
 

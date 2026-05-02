@@ -52,6 +52,13 @@ let previousStateBeforeSearch = null; // To restore state when search is cleared
 let activeDateFilter = null;     // null = all; { fromYear, fromMonth, toYear, toMonth }
 let activeReadFilter = null;     // null = all; 'unread' = not done; 'read' = done
 
+// ── Stats cache + calendar navigation state ───────────────────────
+let _statsCache = null;                           // last fetched /api/stats response
+let _calYear  = new Date().getFullYear();         // calendar month shown in full stats view
+let _calMonth = new Date().getMonth() + 1;
+let _sidebarCalYear  = new Date().getFullYear();  // calendar month shown in sidebar
+let _sidebarCalMonth = new Date().getMonth() + 1;
+
 // ── Navigation history (back / forward) ──────────────────────────
 // Stores up to MAX_HISTORY states. navHistoryIndex points to the current
 // position. goBack() decrements, goForward() increments.
@@ -964,6 +971,26 @@ function renderEmpty() {
 }
 
 // ── State: Reading Stats ─────────────────────────────────────────
+
+// Average words read by day-of-week histogram (7 bars: Sun–Sat)
+function buildDowHistogramHTML(wordsByDow) {
+  const DOW_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const map = {};
+  (wordsByDow || []).forEach(r => { map[r.dow] = r.avg; });
+  const vals = DOW_LABELS.map((_, i) => map[i] || 0);
+  const maxVal = Math.max(...vals, 1);
+  const bars = vals.map((v, i) => {
+    const pct   = Math.round((v / maxVal) * 100);
+    const label = v > 0 ? v.toLocaleString() : '';
+    return `<div class="stat-bar-wrap" title="${DOW_LABELS[i]}: ~${label || '0'} words avg">
+      <div class="stat-bar-value">${label}</div>
+      <div class="stat-bar" style="height:${pct}%"></div>
+      <div class="stat-bar-label">${DOW_LABELS[i]}</div>
+    </div>`;
+  }).join('');
+  return `<div class="stats-bar-chart">${bars}</div>`;
+}
+
 // ── Calendar heatmap builder (shared by renderStats + renderStatsSidebar) ──
 function buildCalendarHTML(readByDate, year, month) {
   // readByDate: array of {date: "YYYY-MM-DD", count: N}
@@ -1006,9 +1033,9 @@ function buildCalendarHTML(readByDate, year, month) {
   return `
     <div class="stat-cal-grid">${headers}${cells.join('')}</div>
     <div class="stat-cal-legend">
-      <div class="stat-cal-legend-swatch" style="background:rgba(74,222,128,0.25)"></div>1
-      <div class="stat-cal-legend-swatch" style="background:rgba(74,222,128,0.55)"></div>2–3
-      <div class="stat-cal-legend-swatch" style="background:rgba(74,222,128,0.9)"></div>4+
+      <div class="stat-cal-legend-swatch" style="background:#1a3d28"></div>1
+      <div class="stat-cal-legend-swatch" style="background:#25804a"></div>2–3
+      <div class="stat-cal-legend-swatch" style="background:#4ade80"></div>4+
     </div>`;
 }
 
@@ -1022,6 +1049,10 @@ async function renderStats() {
     canvas.innerHTML = `<div class="stats-canvas"><p style="color:var(--accent)">Could not load stats: ${e.message}</p></div>`;
     return;
   }
+  // Cache for calendar navigation (no re-fetch on month change)
+  _statsCache = s;
+  _calYear  = new Date().getFullYear();
+  _calMonth = new Date().getMonth() + 1;
 
   // ── Streak message ───────────────────────────────────────────
   const streakMsg = s.current_streak_days > 0
@@ -1123,12 +1154,20 @@ async function renderStats() {
         </div>
       </div>
 
-      <div class="stats-section-title">${monthName}</div>
-      <div class="stat-cal-wrap">${calHtml}</div>
+      <div class="stats-section-title" style="display:flex;align-items:center;gap:8px;justify-content:center">
+        <button class="cal-nav-btn" id="btn-cal-prev">←</button>
+        <span id="cal-month-label" style="font-size:1.05rem;font-weight:700;color:var(--text-main);letter-spacing:0.02em;text-transform:none">${monthName}</span>
+        <button class="cal-nav-btn" id="btn-cal-next">→</button>
+      </div>
+      <div class="stat-cal-wrap" id="stats-cal-wrap">${calHtml}</div>
 
       ${months.length > 0 ? `
       <div class="stats-section-title">Monthly trend</div>
       <div class="stats-bar-chart">${bars}</div>` : ''}
+
+      ${(s.words_by_dow || []).length > 0 ? `
+      <div class="stats-section-title">Avg words read by day</div>
+      ${buildDowHistogramHTML(s.words_by_dow)}` : ''}
 
       ${topPubs ? `
       <div class="stats-section-title">Top reads</div>
@@ -1137,6 +1176,25 @@ async function renderStats() {
       <div class="stats-footnote">Marked as Done = counted as read · Based on newsletter date</div>
     </div>
   `;
+
+  // ── Wire up calendar month navigation ─────────────────────────
+  function _updateMainCal() {
+    const now = new Date();
+    if (_calYear > now.getFullYear() || (_calYear === now.getFullYear() && _calMonth > now.getMonth() + 1)) {
+      _calYear = now.getFullYear(); _calMonth = now.getMonth() + 1;
+    }
+    const name = new Date(_calYear, _calMonth - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+    document.getElementById('cal-month-label').textContent = name;
+    document.getElementById('stats-cal-wrap').innerHTML = buildCalendarHTML(_statsCache.read_by_date, _calYear, _calMonth);
+  }
+  document.getElementById('btn-cal-prev')?.addEventListener('click', () => {
+    _calMonth--; if (_calMonth < 1) { _calMonth = 12; _calYear--; }
+    _updateMainCal();
+  });
+  document.getElementById('btn-cal-next')?.addEventListener('click', () => {
+    _calMonth++; if (_calMonth > 12) { _calMonth = 1; _calYear++; }
+    _updateMainCal();
+  });
 }
 
 // ── Stats sidebar (compact, shown next to Settings) ──────────────
@@ -1174,10 +1232,15 @@ async function renderStatsSidebar() {
     vsStr = 'New reader!'; vsClass = 'positive';
   }
 
-  // Completion %
-  const totalLib = s.total_newsletters || 0;
+  // Completion % — fix: API returns total_library (not total_newsletters)
+  const totalLib = s.total_library || 0;
   const totalRead = s.total_read || 0;
   const completionPct = totalLib > 0 ? Math.round((totalRead / totalLib) * 100) : 0;
+
+  // Cache + init sidebar calendar state on each fresh load
+  _statsCache = s;
+  _sidebarCalYear  = new Date().getFullYear();
+  _sidebarCalMonth = new Date().getMonth() + 1;
 
   const now = new Date();
   const calHtml = buildCalendarHTML(s.read_by_date, now.getFullYear(), now.getMonth() + 1);
@@ -1217,8 +1280,15 @@ async function renderStatsSidebar() {
         <div class="stats-sidebar-metric-value">${completionPct}%</div>
       </div>
     </div>
-    <div class="stats-sidebar-cal-heading">${monthName}</div>
-    <div class="stat-cal-wrap">${calHtml}</div>
+    <div class="stats-sidebar-cal-heading" style="display:flex;align-items:center;gap:6px">
+      <button class="cal-nav-btn" id="btn-sidebar-cal-prev">←</button>
+      <span id="sidebar-cal-month-label" style="flex:1;text-align:center;font-size:0.9rem;font-weight:700;color:var(--text-main);text-transform:none;letter-spacing:0.01em">${monthName}</span>
+      <button class="cal-nav-btn" id="btn-sidebar-cal-next">→</button>
+    </div>
+    <div class="stat-cal-wrap" id="sidebar-cal-wrap">${calHtml}</div>
+    ${(s.words_by_dow || []).length > 0 ? `
+    <div class="stats-sidebar-section-heading">AVG WORDS / DAY</div>
+    ${buildDowHistogramHTML(s.words_by_dow)}` : ''}
     ${(s.top_publications || []).length > 0 ? `
     <div class="stats-sidebar-section-heading">TOP READS</div>
     <div class="stats-sidebar-top-reads">
@@ -1231,6 +1301,25 @@ async function renderStatsSidebar() {
     </div>` : ''}
     <button class="stats-sidebar-view-all" id="btn-sidebar-view-stats">View full stats →</button>
   `;
+
+  // Wire up sidebar calendar month navigation
+  function _updateSidebarCal() {
+    const now = new Date();
+    if (_sidebarCalYear > now.getFullYear() || (_sidebarCalYear === now.getFullYear() && _sidebarCalMonth > now.getMonth() + 1)) {
+      _sidebarCalYear = now.getFullYear(); _sidebarCalMonth = now.getMonth() + 1;
+    }
+    const name = new Date(_sidebarCalYear, _sidebarCalMonth - 1, 1).toLocaleString('default', { month: 'long', year: 'numeric' });
+    document.getElementById('sidebar-cal-month-label').textContent = name;
+    document.getElementById('sidebar-cal-wrap').innerHTML = buildCalendarHTML(_statsCache.read_by_date, _sidebarCalYear, _sidebarCalMonth);
+  }
+  document.getElementById('btn-sidebar-cal-prev')?.addEventListener('click', () => {
+    _sidebarCalMonth--; if (_sidebarCalMonth < 1) { _sidebarCalMonth = 12; _sidebarCalYear--; }
+    _updateSidebarCal();
+  });
+  document.getElementById('btn-sidebar-cal-next')?.addEventListener('click', () => {
+    _sidebarCalMonth++; if (_sidebarCalMonth > 12) { _sidebarCalMonth = 1; _sidebarCalYear++; }
+    _updateSidebarCal();
+  });
 
   // Wire up view-all button
   document.getElementById('btn-sidebar-view-stats')?.addEventListener('click', () => {
@@ -2038,24 +2127,59 @@ async function loadAiConfigEditor() {
       <strong>Ollama — runs locally, free, fully private, no internet needed</strong><br><br>
       Ollama must be running before you generate a summary.<br>
       Click <strong>↺ Load</strong> to list your installed models, pick one, then <strong>Save</strong>.
+      <details class="ai-setup-guide">
+        <summary>▸ First time? Setup guide</summary>
+        <ol>
+          <li>Install Ollama: go to <strong>ollama.com</strong> → Download → run the installer</li>
+          <li>Open Terminal and run: <code>ollama pull llama3.2</code> (downloads a model — ~2 GB, one-time)</li>
+          <li>Start Ollama: <code>ollama serve</code> — keep this terminal window open while using BookSelf</li>
+          <li>Back in BookSelf: click <strong>↺ Load</strong> to see your installed models</li>
+          <li>Pick a model → click <strong>Save</strong> → open any article and try <em>Generate AI Summary</em></li>
+        </ol>
+        <p><em>Ollama runs entirely on your machine. No account or payment needed.</em></p>
+      </details>
     `;
     if (p === 'openai') return `
       <strong>OpenAI — cloud-based, fast, requires a paid API key</strong><br><br>
-      1. Get a key at <em>platform.openai.com/api-keys</em><br>
-      2. Recommended model: <code>gpt-4o-mini</code> (cheap, fast)<br>
-      <em>~$0.001–0.003 per summary at gpt-4o-mini pricing</em>
+      Recommended model: <code>gpt-4o-mini</code> (cheap, fast) · ~$0.001–0.003 per summary
+      <details class="ai-setup-guide">
+        <summary>▸ First time? Setup guide</summary>
+        <ol>
+          <li>Go to <strong>platform.openai.com/api-keys</strong> and sign in (or create a free account)</li>
+          <li>Click <em>Create new secret key</em> — copy it immediately, you won't see it again</li>
+          <li>Paste the key into the <strong>API Key</strong> field below and click <strong>Save</strong></li>
+          <li>Set model to <code>gpt-4o-mini</code> for best price/quality ratio</li>
+        </ol>
+        <p><em>Requires a funded OpenAI account. Summaries cost fractions of a cent each.</em></p>
+      </details>
     `;
     if (p === 'anthropic') return `
       <strong>Anthropic Claude — cloud-based, requires an API key</strong><br><br>
-      1. Get a key at <em>console.anthropic.com</em> → API Keys<br>
-      2. Recommended model: <code>claude-haiku-4-5</code> (fast, economical)<br>
-      <em>~$0.001–0.005 per summary</em>
+      Recommended model: <code>claude-haiku-4-5</code> (fast, economical) · ~$0.001–0.005 per summary
+      <details class="ai-setup-guide">
+        <summary>▸ First time? Setup guide</summary>
+        <ol>
+          <li>Go to <strong>console.anthropic.com</strong> → sign in → click <em>API Keys</em></li>
+          <li>Click <em>Create Key</em> — copy it immediately</li>
+          <li>Paste the key into the <strong>API Key</strong> field below and click <strong>Save</strong></li>
+          <li>Set model to <code>claude-haiku-4-5</code> for best price/quality ratio</li>
+        </ol>
+        <p><em>Requires a funded Anthropic Console account.</em></p>
+      </details>
     `;
     if (p === 'custom') return `
       <strong>Custom / OpenAI-compatible server</strong><br><br>
-      Works with: LM Studio, Groq, Together AI, or any server with a
-      <code>/chat/completions</code> endpoint.<br>
-      Set the Base URL (e.g. <code>http://localhost:1234/v1</code>) and model name below.
+      Works with: LM Studio, Groq, Together AI, or any server with a <code>/chat/completions</code> endpoint.
+      <details class="ai-setup-guide">
+        <summary>▸ LM Studio quickstart</summary>
+        <ol>
+          <li>Download <strong>LM Studio</strong> at lmstudio.ai and install it</li>
+          <li>In LM Studio: search for a model (e.g. <em>Mistral 7B</em>) → Download</li>
+          <li>Go to the <em>Local Server</em> tab → click <strong>Start Server</strong></li>
+          <li>Set Base URL to <code>http://localhost:1234/v1</code> and model to the name shown in LM Studio</li>
+          <li>Leave API Key blank (or enter any text — it's ignored locally)</li>
+        </ol>
+      </details>
     `;
     return '';
   }
@@ -2738,10 +2862,10 @@ function renderNoteModal(editionId, myNotes, aiSummary, activeTab = 'my_notes', 
 
   // Remove all AI-tab-specific UI elements from the body
   function _clearAiUi() {
-    // Remove any AI-specific elements from body AND from the actions bar
     body.querySelector('.ai-empty-state')?.remove();
     body.querySelector('.ai-error-msg')?.remove();
     body.querySelector('.ai-meta-line')?.remove();
+    body.querySelector('.ai-md-view')?.remove();
     document.getElementById('note-modal-actions')?.querySelector('#btn-ai-generate')?.remove();
   }
 
@@ -2777,8 +2901,13 @@ function renderNoteModal(editionId, myNotes, aiSummary, activeTab = 'my_notes', 
         displaySummary = metaMatch[2];
       }
 
-      textarea.style.display = '';
-      textarea.value = displaySummary;
+      // Render markdown in a read view; keep textarea hidden (never read its value for AI tab)
+      textarea.style.display = 'none';
+      const mdView = document.createElement('div');
+      mdView.className = 'ai-md-view';
+      mdView.innerHTML = renderMarkdown(displaySummary);
+      body.insertBefore(mdView, actionsEl);
+
       const regenBtn = document.createElement('button');
       regenBtn.id        = 'btn-ai-generate';
       regenBtn.className = 'btn-secondary ai-regen-action';
@@ -3214,6 +3343,80 @@ function formatDateFull(dateStr) {
  * Escape a string for safe insertion into HTML content.
  * Prevents XSS from newsletter titles/names.
  */
+// ── Simple markdown → HTML renderer (used for AI summaries) ────────
+// Handles: headings, bold, italic, code, bullet/numbered lists, HR, paragraphs.
+// Input is HTML-escaped first so no XSS risk from AI output.
+function renderMarkdown(text) {
+  if (!text) return '';
+
+  function esc(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+  function inline(s) {
+    s = esc(s);
+    s = s.replace(/\*\*\*(.+?)\*\*\*/g, '<strong><em>$1</em></strong>');
+    s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    s = s.replace(/_(.+?)_/g, '<em>$1</em>');
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    return s;
+  }
+
+  const lines  = text.split('\n');
+  const out    = [];
+  let inUl     = false;
+  let inOl     = false;
+
+  function closeLists() {
+    if (inUl) { out.push('</ul>'); inUl = false; }
+    if (inOl) { out.push('</ol>'); inOl = false; }
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
+    const tr  = raw.trim();
+
+    if (/^---+\s*$/.test(tr)) { closeLists(); out.push('<hr>'); continue; }
+
+    const h3 = tr.match(/^###\s+(.+)/);
+    const h2 = tr.match(/^##\s+(.+)/);
+    const h1 = tr.match(/^#\s+(.+)/);
+    if (h3) { closeLists(); out.push(`<h3>${inline(h3[1])}</h3>`); continue; }
+    if (h2) { closeLists(); out.push(`<h2>${inline(h2[1])}</h2>`); continue; }
+    if (h1) { closeLists(); out.push(`<h1>${inline(h1[1])}</h1>`); continue; }
+
+    const ul = tr.match(/^[-*]\s+(.+)/);
+    if (ul) {
+      if (inOl) { out.push('</ol>'); inOl = false; }
+      if (!inUl) { out.push('<ul>'); inUl = true; }
+      out.push(`<li>${inline(ul[1])}</li>`);
+      continue;
+    }
+    const ol = tr.match(/^\d+\.\s+(.+)/);
+    if (ol) {
+      if (inUl) { out.push('</ul>'); inUl = false; }
+      if (!inOl) { out.push('<ol>'); inOl = true; }
+      out.push(`<li>${inline(ol[1])}</li>`);
+      continue;
+    }
+
+    if (tr === '') {
+      closeLists();
+      // collapse multiple blank lines: only add spacer if previous wasn't already one
+      if (out.length > 0 && out[out.length - 1] !== '<p class="md-gap"></p>') {
+        out.push('<p class="md-gap"></p>');
+      }
+      continue;
+    }
+
+    closeLists();
+    out.push(`<p>${inline(tr)}</p>`);
+  }
+  closeLists();
+  return out.join('');
+}
+
 function escHtml(str) {
   if (!str) return '';
   return String(str)

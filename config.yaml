@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────
 # bookself/config.yaml
 #
-# This is the ONLY file you need to edit to customize BookSelf.
+# This is the \file you need to edit to customize which newsletters get pulled from your Gmail Inbox into BookSelf.
 # Add, remove, or modify newsletter sources here.
 # After editing, run fetch.py to pull new content.
 #
