@@ -1283,6 +1283,23 @@ def api_reading_stats():
             "SELECT DISTINCT date(read_at) FROM newsletters WHERE is_read=1 AND read_at IS NOT NULL"
         ).fetchall()
     )
+
+    # Words read over specific windows
+    words_last_7 = con.execute(
+        "SELECT COALESCE(SUM(word_count),0) FROM newsletters "
+        "WHERE is_read=1 AND word_count > 0 AND date(read_at) >= date('now','-7 days')"
+    ).fetchone()[0]
+    words_this_month = con.execute(
+        "SELECT COALESCE(SUM(word_count),0) FROM newsletters "
+        "WHERE is_read=1 AND word_count > 0 "
+        "AND strftime('%Y-%m',date(read_at))=strftime('%Y-%m','now')"
+    ).fetchone()[0]
+    words_last_month = con.execute(
+        "SELECT COALESCE(SUM(word_count),0) FROM newsletters "
+        "WHERE is_read=1 AND word_count > 0 "
+        "AND strftime('%Y-%m',date(read_at))=strftime('%Y-%m',date('now','-1 month'))"
+    ).fetchone()[0]
+
     con.close()
 
     # Current streak (from today backward)
@@ -1312,6 +1329,9 @@ def api_reading_stats():
         'this_month':          this_month,
         'read_last_month':     read_last_month,
         'total_words_read':    total_words_read,
+        'words_last_7':        words_last_7,
+        'words_this_month':    words_this_month,
+        'words_last_month':    words_last_month,
         'best_day_of_week':    best_day_of_week,
         'current_streak_days': current_streak,
         'longest_streak_days': longest,

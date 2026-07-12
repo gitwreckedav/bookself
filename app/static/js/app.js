@@ -68,6 +68,116 @@ let navHistoryIndex = -1;  // -1 = no history yet
 let isNavigatingHistory = false; // prevents push during back/forward calls
 
 // ══════════════════════════════════════════════════════════════════
+// THEMES — CSS variable palettes (add more by extending this object)
+// ══════════════════════════════════════════════════════════════════
+
+const THEMES = {
+  'midnight-blues': {
+    name: 'Midnight Blues',
+    vars: {
+      '--bg-dark':    '#1a1a2e', '--bg-mid':     '#16213e',
+      '--bg-item':    '#0f3460', '--bg-surface': '#1e2f52',
+      '--accent':     '#e94560', '--accent-dim': '#a03040',
+      '--done-color': '#5A9645',
+      '--text-main':  '#e0e0e0', '--text-dim':   '#8892a4',
+      '--border':     '#2a2a4a',
+      '--btn-primary-bg':    'linear-gradient(180deg, #f04e6a 0%, #c23050 100%)',
+      '--btn-primary-color': '#fff',
+      '--btn-secondary-bg':  'linear-gradient(180deg, #1e3060 0%, #141f40 100%)',
+    },
+    swatches: ['#1a1a2e', '#16213e', '#0f3460', '#e94560', '#8892a4', '#e0e0e0'],
+  },
+  'forest-dark': {
+    name: 'Forest Dark',
+    vars: {
+      '--bg-dark':    '#0d1f17', '--bg-mid':     '#122a1f',
+      '--bg-item':    '#193a22', '--bg-surface': '#1e3d2a',
+      '--accent':     '#4ade80', '--accent-dim': '#22c55e',
+      '--done-color': '#86efac',
+      '--text-main':  '#e8f5ee', '--text-dim':   '#7a9a86',
+      '--border':     '#1e3028',
+      '--btn-primary-bg':    'linear-gradient(180deg, #3dcf71 0%, #1fa855 100%)',
+      '--btn-primary-color': '#052e16',
+      '--btn-secondary-bg':  'linear-gradient(180deg, #1a3d22 0%, #0d2118 100%)',
+    },
+    swatches: ['#0d1f17', '#122a1f', '#193a22', '#4ade80', '#7a9a86', '#e8f5ee'],
+  },
+  'amber-noir': {
+    name: 'Amber Noir',
+    vars: {
+      '--bg-dark':    '#191310', '--bg-mid':     '#211a14',
+      '--bg-item':    '#2c2118', '--bg-surface': '#271d14',
+      '--accent':     '#f59e0b', '--accent-dim': '#b45309',
+      '--done-color': '#86efac',
+      '--text-main':  '#f0e8d8', '--text-dim':   '#9a8a6a',
+      '--border':     '#2e2418',
+      '--btn-primary-bg':    'linear-gradient(180deg, #f59e0b 0%, #d97706 100%)',
+      '--btn-primary-color': '#1a0a00',
+      '--btn-secondary-bg':  'linear-gradient(180deg, #2c2010 0%, #1a1208 100%)',
+    },
+    swatches: ['#191310', '#211a14', '#2c2118', '#f59e0b', '#9a8a6a', '#f0e8d8'],
+  },
+  'deep-purple': {
+    name: 'Deep Purple',
+    vars: {
+      '--bg-dark':    '#0d0a1a', '--bg-mid':     '#150f2b',
+      '--bg-item':    '#1e1440', '--bg-surface': '#241850',
+      '--accent':     '#a78bfa', '--accent-dim': '#7c3aed',
+      '--done-color': '#4ade80',
+      '--text-main':  '#ede9ff', '--text-dim':   '#8878b8',
+      '--border':     '#2a1a50',
+      '--btn-primary-bg':    'linear-gradient(180deg, #9b74f7 0%, #7c4ef0 100%)',
+      '--btn-primary-color': '#fff',
+      '--btn-secondary-bg':  'linear-gradient(180deg, #21145a 0%, #15093c 100%)',
+    },
+    swatches: ['#0d0a1a', '#150f2b', '#1e1440', '#a78bfa', '#8878b8', '#ede9ff'],
+  },
+  'slate-storm': {
+    name: 'Slate Storm',
+    vars: {
+      '--bg-dark':    '#0d1117', '--bg-mid':     '#161b22',
+      '--bg-item':    '#21262d', '--bg-surface': '#1c2128',
+      '--accent':     '#58a6ff', '--accent-dim': '#1f6feb',
+      '--done-color': '#3fb950',
+      '--text-main':  '#e6edf3', '--text-dim':   '#7d8590',
+      '--border':     '#30363d',
+      '--btn-primary-bg':    'linear-gradient(180deg, #f04e6a 0%, #c23050 100%)',
+      '--btn-primary-color': '#fff',
+      '--btn-secondary-bg':  'linear-gradient(180deg, #1e3060 0%, #141f40 100%)',
+    },
+    swatches: ['#0d1117', '#161b22', '#21262d', '#58a6ff', '#7d8590', '#e6edf3'],
+  },
+  'rose-gold': {
+    name: 'Rose Gold',
+    vars: {
+      '--bg-dark':    '#1a1015', '--bg-mid':     '#231520',
+      '--bg-item':    '#2e1a28', '--bg-surface': '#2a1520',
+      '--accent':     '#f472b6', '--accent-dim': '#be185d',
+      '--done-color': '#4ade80',
+      '--text-main':  '#fce7f3', '--text-dim':   '#c084a0',
+      '--border':     '#3d1a30',
+      '--btn-primary-bg':    'linear-gradient(180deg, #f472b6 0%, #db2777 100%)',
+      '--btn-primary-color': '#fff',
+      '--btn-secondary-bg':  'linear-gradient(180deg, #2e1a28 0%, #1a0d18 100%)',
+    },
+    swatches: ['#1a1015', '#231520', '#2e1a28', '#f472b6', '#c084a0', '#fce7f3'],
+  },
+};
+
+/** Apply a theme by id — sets CSS vars on :root and persists to localStorage */
+function applyTheme(themeId) {
+  const theme = THEMES[themeId] || THEMES['midnight-blues'];
+  const root  = document.documentElement;
+  Object.entries(theme.vars).forEach(([prop, val]) => root.style.setProperty(prop, val));
+  localStorage.setItem('bookself-theme', themeId);
+  // Re-inject dark mode CSS with new theme colors if an article is open in dark mode
+  if (localStorage.getItem('articleDarkMode') === 'true') {
+    const iframe = document.querySelector('.reader-iframe');
+    if (iframe) applyArticleDarkMode(iframe, true);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
 // ZOOM — whole-app scale (body.style.zoom, like OS-level zoom)
 // ══════════════════════════════════════════════════════════════════
 
@@ -77,18 +187,25 @@ const ZOOM_LEVELS = { '1': 0.80, '2': 0.90, '3': 1.00, '4': 1.12, '5': 1.25 };
 // Same-origin iframes let us inject a <style> tag directly into the
 // newsletter document. We use aggressive !important overrides because
 // newsletters embed inline styles on every element.
-const ARTICLE_DARK_CSS = `
-  html, body { background: #12172a !important; color: #d0d0d0 !important; }
-  * { background-color: transparent !important; }
-  body { background-color: #12172a !important; }
-  *, *::before, *::after { color: #d0d0d0 !important; }
-  h1, h2, h3, h4, h5, h6 { color: #f0f0f0 !important; }
-  strong, b, th { color: #ebebeb !important; }
-  a, a * { color: #7ab3f5 !important; }
-  td, th { border-color: rgba(255,255,255,0.07) !important; }
-  hr { border-color: rgba(255,255,255,0.15) !important;
-       background-color: rgba(255,255,255,0.15) !important; }
-`;
+// Reads current theme CSS vars so the injected colors match the active theme.
+function getArticleDarkCss() {
+  const cs  = getComputedStyle(document.documentElement);
+  const bg  = cs.getPropertyValue('--bg-dark').trim()  || '#1a1a2e';
+  const txt = cs.getPropertyValue('--text-main').trim() || '#d0d0d0';
+  const acc = cs.getPropertyValue('--accent').trim()    || '#7ab3f5';
+  return `
+    html, body { background: ${bg} !important; color: ${txt} !important; }
+    * { background-color: transparent !important; }
+    body { background-color: ${bg} !important; }
+    *, *::before, *::after { color: ${txt} !important; }
+    h1, h2, h3, h4, h5, h6 { color: #f0f0f0 !important; }
+    strong, b, th { color: #ebebeb !important; }
+    a, a * { color: ${acc} !important; }
+    td, th { border-color: rgba(255,255,255,0.07) !important; }
+    hr { border-color: rgba(255,255,255,0.15) !important;
+         background-color: rgba(255,255,255,0.15) !important; }
+  `;
+}
 
 /**
  * Inject or remove the dark-mode stylesheet inside a newsletter iframe.
@@ -116,7 +233,7 @@ function applyArticleDarkMode(iframe, enabled) {
         // Step 1 — inject dark CSS stylesheet
         const s = doc.createElement('style');
         s.id = '_bsdm';
-        s.textContent = ARTICLE_DARK_CSS;
+        s.textContent = getArticleDarkCss();
         doc.head.appendChild(s);
 
         // Step 2 — strip background AND color from inline styles.
@@ -329,7 +446,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ── Apply saved scale preferences from localStorage ───────────
   const savedUiScale   = localStorage.getItem('uiScale')   || '3';
   const savedFontScale = localStorage.getItem('fontScale') || '3';
+  const savedTheme     = localStorage.getItem('bookself-theme') || 'midnight-blues';
   applyZoom(savedUiScale);
+  applyTheme(savedTheme);
   document.documentElement.dataset.fontScale = savedFontScale;
 
   // ── Initialise drag-to-resize divider ─────────────────────────
@@ -1033,9 +1152,9 @@ function buildCalendarHTML(readByDate, year, month) {
   return `
     <div class="stat-cal-grid">${headers}${cells.join('')}</div>
     <div class="stat-cal-legend">
-      <div class="stat-cal-legend-swatch" style="background:#1a3d28"></div>1
-      <div class="stat-cal-legend-swatch" style="background:#25804a"></div>2–3
-      <div class="stat-cal-legend-swatch" style="background:#4ade80"></div>4+
+      <div class="stat-cal-legend-swatch" style="background:#0e4429"></div>1
+      <div class="stat-cal-legend-swatch" style="background:#26a641"></div>2–3
+      <div class="stat-cal-legend-swatch" style="background:#39d353"></div>4+
     </div>`;
 }
 
@@ -1107,6 +1226,11 @@ async function renderStats() {
 
   const bestDay = s.best_day_of_week ? `${s.best_day_of_week}s` : '—';
 
+  const fmtW = n => n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, '') + 'k' : String(n || 0);
+  const w7    = fmtW(s.words_last_7     || 0);
+  const wMo   = fmtW(s.words_this_month || 0);
+  const wLast = fmtW(s.words_last_month || 0);
+
   // ── Calendar heatmap (current month) ────────────────────────
   const now = new Date();
   const calHtml = buildCalendarHTML(s.read_by_date, now.getFullYear(), now.getMonth() + 1);
@@ -1130,6 +1254,10 @@ async function renderStats() {
           <div class="stats-pill-label">total read</div>
         </div>
         <div class="stats-pill">
+          <div class="stats-pill-value">${s.current_streak_days || 0}</div>
+          <div class="stats-pill-label">current streak</div>
+        </div>
+        <div class="stats-pill">
           <div class="stats-pill-value">${s.longest_streak_days || 0}</div>
           <div class="stats-pill-label">best streak</div>
         </div>
@@ -1137,8 +1265,16 @@ async function renderStats() {
 
       <div class="stats-extra-row">
         <div class="stats-extra-card">
-          <div class="stats-extra-label">📖 Words consumed</div>
-          <div class="stats-extra-value">${wordsStr}</div>
+          <div class="stats-extra-label">📝 Words · last 7d</div>
+          <div class="stats-extra-value">${w7}</div>
+        </div>
+        <div class="stats-extra-card">
+          <div class="stats-extra-label">📝 Words · this month</div>
+          <div class="stats-extra-value">${wMo}</div>
+        </div>
+        <div class="stats-extra-card">
+          <div class="stats-extra-label">📝 Words · last month</div>
+          <div class="stats-extra-value">${wLast}</div>
         </div>
         <div class="stats-extra-card">
           <div class="stats-extra-label">📈 vs. last month</div>
@@ -1147,10 +1283,6 @@ async function renderStats() {
         <div class="stats-extra-card">
           <div class="stats-extra-label">📅 Best reading day</div>
           <div class="stats-extra-value" style="font-size:0.95rem">${bestDay}</div>
-        </div>
-        <div class="stats-extra-card">
-          <div class="stats-extra-label">🎯 Library read</div>
-          <div class="stats-extra-value">${completionPct}%</div>
         </div>
       </div>
 
@@ -1737,11 +1869,18 @@ function renderSettings() {
   canvas.innerHTML = `
     <div class="state-settings-layout">
     <div class="state-settings">
-      <h2 style="font-size:18px;font-weight:700;margin-bottom:20px;color:var(--text-main)">Settings</h2>
+      <div id="settings-master-header" style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:20px;user-select:none">
+        <span id="settings-master-chevron" style="font-size:0.65rem;color:var(--text-dim);transition:transform 0.2s ease;display:inline-block;transform:rotate(90deg)">▶</span>
+        <h2 style="font-size:18px;font-weight:700;color:var(--text-main);margin:0">Settings</h2>
+      </div>
 
       <!-- ── Sync ───────────────────────────────────────────────── -->
       <div class="settings-section">
-        <div class="settings-section-title">Sync</div>
+        <div class="settings-section-header" data-section-key="sync">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">Sync</span>
+        </div>
+        <div class="settings-section-body">
 
         <div class="settings-row">
           <span class="settings-label">Last synced</span>
@@ -1806,42 +1945,89 @@ function renderSettings() {
 
         <!-- Live sync output log (hidden until sync starts) -->
         <div id="sync-log"></div>
+
+        </div><!-- /settings-section-body -->
       </div>
 
       <!-- ── Library Summary ────────────────────────────────────── -->
       <div class="settings-section">
-        <div class="settings-section-title">Library</div>
-        <div id="library-summary-wrap">
-          <div class="nav-loading" style="font-size:12px;padding:8px 0">Loading…</div>
+        <div class="settings-section-header" data-section-key="library">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">Library</span>
         </div>
+        <div class="settings-section-body">
+          <div id="library-summary-wrap">
+            <div class="nav-loading" style="font-size:12px;padding:8px 0">Loading…</div>
+          </div>
+        </div><!-- /settings-section-body -->
+      </div>
+
+      <!-- ── Appearance / Theme Picker ────────────────────────────── -->
+      <div class="settings-section">
+        <div class="settings-section-header" data-section-key="appearance">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">Appearance</span>
+        </div>
+        <div class="settings-section-body">
+          <p style="font-size:0.86rem;color:var(--text-dim);margin-bottom:14px">
+            Choose a colour theme. Select one then click <strong style="color:var(--text-main)">Save &amp; Apply</strong>.
+          </p>
+          <div class="theme-picker">
+            ${Object.entries(THEMES).map(([id, t]) => `
+              <label class="theme-row">
+                <input type="radio" name="theme-select" value="${id}"
+                       ${(localStorage.getItem('bookself-theme') || 'midnight-blues') === id ? 'checked' : ''}>
+                <span class="theme-name">${escHtml(t.name)}</span>
+                <span class="theme-swatches">
+                  ${t.swatches.map(c => `<span class="theme-swatch" style="background:${c}" title="${c}"></span>`).join('')}
+                </span>
+              </label>
+            `).join('')}
+          </div>
+          <button class="btn-primary theme-apply-btn" id="btn-apply-theme">Save &amp; Apply Theme</button>
+        </div><!-- /settings-section-body -->
       </div>
 
       <!-- ── Config Editor ──────────────────────────────────────── -->
       <div class="settings-section">
-        <div class="settings-section-title">Configuration</div>
-        <p style="font-size:0.93rem;color:var(--text-dim);margin-bottom:10px">
-          Edit your newsletter sources directly. Changes take effect on next sync.
-        </p>
-        <div id="config-editor-wrap">
-          <div class="nav-loading" style="font-size:12px;padding:8px 0">Loading config…</div>
+        <div class="settings-section-header" data-section-key="configuration">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">Configuration</span>
         </div>
+        <div class="settings-section-body">
+          <p style="font-size:0.93rem;color:var(--text-dim);margin-bottom:10px">
+            Edit your newsletter sources directly. Changes take effect on next sync.
+          </p>
+          <div id="config-editor-wrap">
+            <div class="nav-loading" style="font-size:12px;padding:8px 0">Loading config…</div>
+          </div>
+        </div><!-- /settings-section-body -->
       </div>
 
       <!-- ── AI Summary ────────────────────────────────────────── -->
       <div class="settings-section">
-        <div class="settings-section-title">AI Summary</div>
-        <p style="font-size:0.93rem;color:var(--text-dim);margin-bottom:12px">
-          Configure which AI model generates article summaries.
-          BookSelf is local-first by default — Ollama runs entirely on your machine.
-        </p>
-        <div id="ai-config-wrap">
-          <div class="nav-loading" style="font-size:12px;padding:8px 0">Loading…</div>
+        <div class="settings-section-header" data-section-key="ai-summary">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">AI Summary</span>
         </div>
+        <div class="settings-section-body">
+          <p style="font-size:0.93rem;color:var(--text-dim);margin-bottom:12px">
+            Configure which AI model generates article summaries.
+            BookSelf is local-first by default — Ollama runs entirely on your machine.
+          </p>
+          <div id="ai-config-wrap">
+            <div class="nav-loading" style="font-size:12px;padding:8px 0">Loading…</div>
+          </div>
+        </div><!-- /settings-section-body -->
       </div>
 
       <!-- ── Display ────────────────────────────────────────────── -->
       <div class="settings-section">
-        <div class="settings-section-title">Display</div>
+        <div class="settings-section-header" data-section-key="display">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">Display</span>
+        </div>
+        <div class="settings-section-body">
 
         <div class="settings-display-row">
           <span class="settings-label">UI size</span>
@@ -1878,15 +2064,22 @@ function renderSettings() {
             Save &amp; Apply All
           </button>
         </div>
+
+        </div><!-- /settings-section-body -->
       </div>
 
       <!-- ── About ──────────────────────────────────────────────── -->
       <div class="settings-section">
-        <div class="settings-section-title">About</div>
-        <p class="about-version">BookSelf v1.0.0 — Local-first newsletter reader</p>
-        <p style="font-size:0.86rem;color:var(--text-dim);margin-top:8px">
-          Built with Python + Flask + SQLite. All data stays on your machine.
-        </p>
+        <div class="settings-section-header" data-section-key="about">
+          <span class="settings-chevron">▶</span>
+          <span class="settings-section-title">About</span>
+        </div>
+        <div class="settings-section-body">
+          <p class="about-version">BookSelf v1.2.0 — Local-first newsletter reader</p>
+          <p style="font-size:0.86rem;color:var(--text-dim);margin-top:8px">
+            Built with Python + Flask + SQLite. All data stays on your machine.
+          </p>
+        </div><!-- /settings-section-body -->
       </div>
     </div><!-- /state-settings -->
 
@@ -2046,6 +2239,55 @@ function renderSettings() {
   document.getElementById('display-save-all').addEventListener('click', () => {
     applyUiScale(pendingUiScale);
     applyFontScale(pendingFontScale);
+  });
+
+  // ── Collapsible section headers ──────────────────────────────────
+  document.querySelectorAll('.settings-section-header').forEach(header => {
+    const key  = header.dataset.sectionKey;
+    const body = header.nextElementSibling; // .settings-section-body
+    const savedState = localStorage.getItem(`settings-collapse-${key}`);
+    if (savedState === 'closed') {
+      body.classList.add('collapsed');
+    } else {
+      header.classList.add('open');
+    }
+    header.addEventListener('click', () => {
+      const isOpen = header.classList.toggle('open');
+      body.classList.toggle('collapsed', !isOpen);
+      localStorage.setItem(`settings-collapse-${key}`, isOpen ? 'open' : 'closed');
+    });
+  });
+
+  // ── Master settings collapser ────────────────────────────────────
+  const masterHeader  = canvas.querySelector('#settings-master-header');
+  const masterChevron = canvas.querySelector('#settings-master-chevron');
+  masterHeader?.addEventListener('click', () => {
+    const allHeaders = canvas.querySelectorAll('.settings-section-header');
+    const allBodies  = canvas.querySelectorAll('.settings-section-body');
+    const anyOpen = [...allHeaders].some(h => h.classList.contains('open'));
+    allHeaders.forEach(h => {
+      const key = h.dataset.sectionKey;
+      if (anyOpen) { h.classList.remove('open'); localStorage.setItem(`settings-collapse-${key}`, 'closed'); }
+      else         { h.classList.add('open');    localStorage.setItem(`settings-collapse-${key}`, 'open');   }
+    });
+    allBodies.forEach(b => b.classList.toggle('collapsed', anyOpen));
+    masterChevron.style.transform = anyOpen ? '' : 'rotate(90deg)';
+  });
+
+  // ── Theme apply ──────────────────────────────────────────────────
+  document.getElementById('btn-apply-theme')?.addEventListener('click', () => {
+    const sel = canvas.querySelector('input[name="theme-select"]:checked');
+    if (!sel) return;
+    const btn = document.getElementById('btn-apply-theme');
+    const orig = btn?.textContent || 'Save & Apply Theme';
+    if (btn) { btn.textContent = 'Applying theme…'; btn.disabled = true; }
+    requestAnimationFrame(() => {
+      applyTheme(sel.value);
+      if (btn) {
+        btn.textContent = 'Appying Theme!';
+        setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500);
+      }
+    });
   });
 }
 
@@ -2886,6 +3128,25 @@ function renderNoteModal(editionId, myNotes, aiSummary, activeTab = 'my_notes', 
   function _renderAiTab() {
     _clearAiUi();
     const actionsEl = document.getElementById('note-modal-actions');
+
+    // ⚙ AI Settings — always visible in AI tab regardless of summary state
+    if (!actionsEl.querySelector('#btn-ai-settings-link')) {
+      const sl = document.createElement('button');
+      sl.id = 'btn-ai-settings-link';
+      sl.className = 'ai-error-settings-link';
+      sl.textContent = '⚙ AI Settings';
+      sl.style.fontSize = '0.82rem';
+      actionsEl.appendChild(sl);
+      sl.addEventListener('click', () => {
+        close();
+        renderSettings();
+        setTimeout(() => {
+          const h = document.querySelector('[data-section-key="ai-summary"]');
+          if (h && !h.classList.contains('open')) h.click();
+          h?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
+      });
+    }
 
     if (currentAiSummary) {
       // Summary exists: split off the Generated: metadata line, render it separately

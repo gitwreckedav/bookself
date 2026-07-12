@@ -223,7 +223,7 @@ bookself/
 
 ---
 
-## Limitations / non-goals
+## Current Limitations
 
 - Designed for one person / one Gmail account — no multi-user support
 - No mobile app — browser-only, localhost
