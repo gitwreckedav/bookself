@@ -17,6 +17,10 @@
 # ─────────────────────────────────────────────────────────────────
 
 import os
+import re
+
+# Single source of truth: read the version from app.py so the spec never drifts
+APP_VERSION = re.search(r"APP_VERSION = '([^']+)'", open('app.py').read()).group(1)
 
 block_cipher = None
 
@@ -89,7 +93,7 @@ app = BUNDLE(
     bundle_identifier='com.gitwreckedav.bookself',
     info_plist={
         'NSHighResolutionCapable': True,
-        'CFBundleShortVersionString': '1.3.0',
+        'CFBundleShortVersionString': APP_VERSION,
         'CFBundleName': 'BookSelf',
         'NSHumanReadableCopyright': 'Local-first newsletter library',
     },

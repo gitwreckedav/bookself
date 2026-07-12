@@ -50,3 +50,5 @@ tests/tmp/
 .pytest_cache/
 *.notes.md
 AUDIT.md
+packaging/BookSelf.iconset/
+packaging/icon_preview.png
