@@ -88,13 +88,35 @@ On first run, a browser window opens for Google sign-in. After that, `token.json
 
 ## Daily use
 
+**Recommended: the desktop app.** Download `BookSelf-macOS.zip` from the
+[latest release](https://github.com/gitwreckedav/bookself/releases/latest),
+unzip, drag **BookSelf.app** to Applications. First launch: right-click → Open
+(the app is unsigned). It's a native window — no terminal, no browser tab.
+
+The app checks GitHub for new releases on every launch and shows an update
+banner when one is available. Your data lives in
+`~/Library/Application Support/BookSelf/` and survives updates.
+Optional: enable *Launch at login* in Settings → About.
+
+**Dev mode** (unchanged — this is the "raw materials" workflow):
+
 ```bash
 source .venv/bin/activate
 python fetch.py                # Incremental sync (new emails only)
-python app.py                  # Open UI
+python app.py                  # Open UI in browser
 ```
 
 Or use the **↻ Sync** button inside the app — no terminal needed after setup.
+
+---
+
+## Releasing a new version (dev → production cycle)
+
+1. Make changes, test with `python app.py`, commit, push to `main`
+2. Bump `APP_VERSION` in `app.py` (e.g. `1.4.0`)
+3. Tag and push: `git tag v1.4.0 && git push origin v1.4.0`
+4. GitHub Actions builds `BookSelf.app` and attaches it to a Release automatically
+5. The installed app shows the update banner on next launch → Download → replace in Applications
 
 ---
 

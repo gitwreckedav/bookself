@@ -31,16 +31,29 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, Response, send_from_directory
 
+# ── App version — single source of truth ─────────────────────────
+# The GitHub release tag must match this (v1.3.0 ↔ APP_VERSION 1.3.0).
+APP_VERSION = '1.3.0'
+GITHUB_REPO = 'gitwreckedav/bookself'
+
 # ── Path setup ────────────────────────────────────────────────────
-# Everything is computed relative to THIS file's location.
-# This ensures the app works correctly no matter where you run it from.
-PROJECT_ROOT = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
+# Two distinct roots:
+#   BUNDLE_ROOT  = read-only assets (templates, static). Inside the .app
+#                  when packaged; the project folder in dev mode.
+#   PROJECT_ROOT = user data (db, newsletters/, configs). The project
+#                  folder in dev mode; ~/Library/Application Support/BookSelf
+#                  when packaged — so data survives app updates.
+sys.path.insert(0, str(Path(__file__).parent))
 
 import yaml
 from bookself.config_loader import (
-    load_config, get_db_path, get_newsletters_dir, get_assets_dir, get_project_root
+    load_config, get_db_path, get_newsletters_dir, get_assets_dir,
+    get_project_root, get_bundle_root, is_frozen
 )
+
+IS_FROZEN   = is_frozen()
+BUNDLE_ROOT = get_bundle_root()
+PROJECT_ROOT = get_project_root()
 from bookself.database import (
     get_all_publications, get_series_for_publication, get_newsletters,
     get_newsletter_by_id, search_newsletters, get_recent_for_publication,
@@ -121,8 +134,8 @@ def _update_user_data(msg_id: str, **kwargs):
 # so it works correctly regardless of working directory.
 app = Flask(
     __name__,
-    template_folder=str(PROJECT_ROOT / 'app' / 'templates'),
-    static_folder=str(PROJECT_ROOT / 'app' / 'static'),
+    template_folder=str(BUNDLE_ROOT / 'app' / 'templates'),
+    static_folder=str(BUNDLE_ROOT / 'app' / 'static'),
     static_url_path='/static'
 )
 
@@ -134,7 +147,7 @@ app = Flask(
 @app.route('/')
 def index():
     """Serve the main single-page app shell."""
-    template_path = PROJECT_ROOT / 'app' / 'templates' / 'index.html'
+    template_path = BUNDLE_ROOT / 'app' / 'templates' / 'index.html'
     return template_path.read_text(encoding='utf-8')
 
 
@@ -507,13 +520,21 @@ def api_sync():
         mode        — 'seed' | 'incremental' (required)
         start_date  — 'YYYY-MM-DD' (optional, seed mode only)
     """
-    fetch_script   = PROJECT_ROOT / 'fetch.py'
-    catalog_script = PROJECT_ROOT / 'catalog.py'
-
-    if not fetch_script.exists():
-        return jsonify({'error': 'fetch.py not found'}), 404
-    if not catalog_script.exists():
-        return jsonify({'error': 'catalog.py not found'}), 404
+    # Dev mode: run the scripts with the Python interpreter.
+    # Packaged app: no Python exists — the app binary re-invokes itself
+    # with --run-fetch / --run-catalog (dispatched in desktop.py).
+    if IS_FROZEN:
+        fetch_cmd_base   = [sys.executable, '--run-fetch']
+        catalog_cmd_base = [sys.executable, '--run-catalog']
+    else:
+        fetch_script   = Path(__file__).parent / 'fetch.py'
+        catalog_script = Path(__file__).parent / 'catalog.py'
+        if not fetch_script.exists():
+            return jsonify({'error': 'fetch.py not found'}), 404
+        if not catalog_script.exists():
+            return jsonify({'error': 'catalog.py not found'}), 404
+        fetch_cmd_base   = [sys.executable, '-u', str(fetch_script)]
+        catalog_cmd_base = [sys.executable, '-u', str(catalog_script)]
 
     body            = request.get_json(silent=True) or {}
     mode            = body.get('mode', 'incremental')
@@ -552,7 +573,7 @@ def api_sync():
             yield f"data: 📥 Stage 1: Acquisition ({mode} mode)\n\n"
             yield "data: ═══════════════════════════════════════\n\n"
 
-            cmd = [sys.executable, '-u', str(fetch_script), '--mode', mode]
+            cmd = fetch_cmd_base + ['--mode', mode]
             if mode == 'seed' and start_date:
                 # Validate date format
                 try:
@@ -597,7 +618,7 @@ def api_sync():
             # Build catalog.py command — pass --start-date in seed mode
             # so it purges pre-start-date entries and date-filters the raw files.
             seed_start_date = config.get('settings', {}).get('seed_start_date', '2024-01-01')
-            catalog_cmd = [sys.executable, '-u', str(catalog_script)]
+            catalog_cmd = list(catalog_cmd_base)
             if mode == 'seed' and not sender_filter:
                 # Date-based cleanup only for full seed, not per-sender
                 catalog_cmd += ['--start-date', seed_start_date]
@@ -1404,6 +1425,97 @@ def api_reveal():
         return jsonify({'ok': True, 'opened': str(target)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# API — APP VERSION, UPDATES, LAUNCH-AT-LOGIN
+# ══════════════════════════════════════════════════════════════════
+
+@app.route('/api/version')
+def api_version():
+    """Current app version + whether we're running as the packaged app."""
+    return jsonify({'version': APP_VERSION, 'packaged': IS_FROZEN})
+
+
+@app.route('/api/update-check')
+def api_update_check():
+    """
+    Ask GitHub for the latest release and compare against APP_VERSION.
+    Fails silently (update_available: false) if offline or no releases yet.
+    """
+    import requests as _rq
+    try:
+        r = _rq.get(
+            f'https://api.github.com/repos/{GITHUB_REPO}/releases/latest',
+            timeout=4, headers={'Accept': 'application/vnd.github+json'}
+        )
+        if r.status_code != 200:
+            return jsonify({'update_available': False})
+        rel = r.json()
+        latest = (rel.get('tag_name') or '').lstrip('v')
+        if not latest:
+            return jsonify({'update_available': False})
+
+        def _ver(v):
+            return tuple(int(p) for p in v.split('.') if p.isdigit())
+
+        newer = _ver(latest) > _ver(APP_VERSION)
+        return jsonify({
+            'update_available': newer,
+            'current': APP_VERSION,
+            'latest': latest,
+            'url': rel.get('html_url', f'https://github.com/{GITHUB_REPO}/releases'),
+        })
+    except Exception:
+        return jsonify({'update_available': False})
+
+
+@app.route('/api/open-release', methods=['POST'])
+def api_open_release():
+    """Open the GitHub releases page in the system default browser."""
+    webbrowser.open(f'https://github.com/{GITHUB_REPO}/releases/latest')
+    return jsonify({'ok': True})
+
+
+LAUNCH_AGENT_PATH = Path.home() / 'Library' / 'LaunchAgents' / 'com.gitwreckedav.bookself.plist'
+
+_LAUNCH_AGENT_PLIST = '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>com.gitwreckedav.bookself</string>
+    <key>ProgramArguments</key>
+    <array><string>/usr/bin/open</string><string>-a</string><string>BookSelf</string></array>
+    <key>RunAtLoad</key><true/>
+</dict>
+</plist>
+'''
+
+
+@app.route('/api/autostart', methods=['GET', 'POST'])
+def api_autostart():
+    """
+    GET  → {enabled, supported}: is launch-at-login on?
+    POST → {enabled: bool}: write/remove the LaunchAgent plist.
+    Only meaningful on macOS with the packaged app installed.
+    """
+    supported = platform.system() == 'Darwin'
+    if request.method == 'GET':
+        return jsonify({'enabled': LAUNCH_AGENT_PATH.exists(), 'supported': supported})
+
+    if not supported:
+        return jsonify({'error': 'Launch at login is only supported on macOS.'}), 400
+    body = request.get_json(silent=True) or {}
+    try:
+        if body.get('enabled'):
+            LAUNCH_AGENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+            LAUNCH_AGENT_PATH.write_text(_LAUNCH_AGENT_PLIST)
+        else:
+            LAUNCH_AGENT_PATH.unlink(missing_ok=True)
+        return jsonify({'ok': True, 'enabled': LAUNCH_AGENT_PATH.exists()})
+    except Exception as e:
+        return jsonify({'error': f'Could not update launch agent: {e}. '
+                                 f'Check permissions on ~/Library/LaunchAgents.'}), 500
 
 
 # ══════════════════════════════════════════════════════════════════

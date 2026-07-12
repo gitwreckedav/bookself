@@ -1,0 +1,75 @@
+# ─────────────────────────────────────────────────────────────────
+# BookSelf release pipeline
+#
+# Trigger: push a version tag, e.g.
+#   git tag v1.3.0 && git push origin v1.3.0
+#
+# What happens:
+#   1. GitHub spins up a macOS runner
+#   2. Builds BookSelf.app with PyInstaller
+#   3. Zips it and attaches it to a GitHub Release for that tag
+#
+# The app's in-UI update check compares its APP_VERSION against the
+# latest release tag here — keep app.py's APP_VERSION in sync with
+# the tag you push.
+# ─────────────────────────────────────────────────────────────────
+
+name: Build & Release BookSelf.app
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write   # needed to create the Release
+
+jobs:
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pywebview
+
+      - name: Verify APP_VERSION matches tag
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          APP_VERSION=$(python -c "import re; print(re.search(r\"APP_VERSION = '([^']+)'\", open('app.py').read()).group(1))")
+          echo "Tag: $TAG_VERSION — app.py: $APP_VERSION"
+          if [ "$TAG_VERSION" != "$APP_VERSION" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match APP_VERSION $APP_VERSION in app.py"
+            exit 1
+          fi
+
+      - name: Build BookSelf.app
+        run: pyinstaller bookself.spec --noconfirm
+
+      - name: Zip the app bundle
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent BookSelf.app BookSelf-macOS.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/BookSelf-macOS.zip
+          generate_release_notes: true
+          body: |
+            ## Install
+            1. Download `BookSelf-macOS.zip` below and unzip
+            2. Drag **BookSelf.app** to Applications
+            3. First launch: **right-click → Open** (app is unsigned)
+
+            Your library data lives in `~/Library/Application Support/BookSelf/`
+            and your Gmail credentials in `~/.config/bookself/` — both survive updates.

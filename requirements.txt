@@ -34,3 +34,8 @@ lxml>=4.9.0
 
 # HTTP requests — downloads images from newsletter URLs
 requests>=2.31.0
+
+# ── Desktop app only (not needed for python app.py dev mode) ──────
+# pywebview wraps the UI in a native macOS window for BookSelf.app
+# Install alongside pyinstaller when building: pip install pywebview pyinstaller
+pywebview>=5.0

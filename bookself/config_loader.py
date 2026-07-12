@@ -8,23 +8,56 @@
 # this module raises a clear error message so you know exactly what to fix.
 # ─────────────────────────────────────────────────────────────────
 
+import sys
+import shutil
+import platform
 import yaml
 from pathlib import Path
 
 
+def is_frozen():
+    """True when running as a packaged app (PyInstaller), False in dev mode."""
+    return getattr(sys, 'frozen', False)
+
+
+def get_bundle_root():
+    """
+    Returns the folder holding read-only bundled assets (templates, static,
+    default configs). In dev mode this is the project folder; in the packaged
+    app it's PyInstaller's extraction dir inside the .app bundle.
+    """
+    if is_frozen():
+        return Path(getattr(sys, '_MEIPASS', Path(sys.executable).parent))
+    return Path(__file__).parent.parent
+
+
 def get_project_root():
     """
-    Returns the absolute path to the bookself project folder.
+    Returns the absolute path to the folder holding USER DATA
+    (bookself.db, newsletters/, assets/, config.yaml, ai_config.yaml).
 
-    This always works correctly regardless of where you run Python from,
-    because it calculates the path relative to THIS file's location —
-    not relative to the current working directory.
-
-    Example: If this file is at /home/user/bookself/bookself/config_loader.py,
-    the project root is /home/user/bookself/
+    Dev mode (python app.py): the project folder, same as always.
+    Packaged app: a persistent per-user data dir OUTSIDE the .app bundle,
+    so data survives app updates. First run seeds the default configs
+    from the bundle.
     """
-    # __file__ is this file. .parent is bookself/bookself/. .parent again is bookself/
-    return Path(__file__).parent.parent
+    if not is_frozen():
+        # __file__ is this file. .parent is bookself/bookself/. .parent again is bookself/
+        return Path(__file__).parent.parent
+
+    if platform.system() == 'Darwin':
+        root = Path.home() / 'Library' / 'Application Support' / 'BookSelf'
+    else:
+        root = Path.home() / '.bookself'
+    root.mkdir(parents=True, exist_ok=True)
+
+    # First run: copy default configs out of the bundle so the user can edit them
+    bundle = get_bundle_root()
+    for name in ('config.yaml', 'ai_config.yaml'):
+        if not (root / name).exists() and (bundle / name).exists():
+            shutil.copy(bundle / name, root / name)
+
+    return root
 
 
 def load_config(config_path=None):

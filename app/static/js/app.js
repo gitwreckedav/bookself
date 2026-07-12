@@ -465,7 +465,40 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Wire up all the event listeners
   setupEventListeners();
+
+  // Non-blocking: check GitHub for a newer release, show banner if found
+  checkForUpdates();
 });
+
+// ══════════════════════════════════════════════════════════════════
+// UPDATE CHECK — compares APP_VERSION against latest GitHub release
+// ══════════════════════════════════════════════════════════════════
+
+async function checkForUpdates() {
+  try {
+    const r = await fetch('/api/update-check');
+    const d = await r.json();
+    if (!d.update_available) return;
+    // Dismissed this version already? Stay quiet until the next one.
+    if (localStorage.getItem('update-dismissed') === d.latest) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'update-banner';
+    banner.innerHTML = `
+      <span class="update-banner-text">⬆ BookSelf v${d.latest} is available (you have v${d.current})</span>
+      <button class="update-banner-btn" id="update-download-btn">Download</button>
+      <button class="update-banner-dismiss" id="update-dismiss-btn" title="Dismiss until next release">✕</button>
+    `;
+    document.body.prepend(banner);
+    document.getElementById('update-download-btn').addEventListener('click', () => {
+      fetch('/api/open-release', { method: 'POST' });
+    });
+    document.getElementById('update-dismiss-btn').addEventListener('click', () => {
+      localStorage.setItem('update-dismissed', d.latest);
+      banner.remove();
+    });
+  } catch (e) { /* offline or dev — stay silent */ }
+}
 
 // ══════════════════════════════════════════════════════════════════
 // NAVIGATION HISTORY — back / forward with 5-state memory
@@ -2075,10 +2108,14 @@ function renderSettings() {
           <span class="settings-section-title">About</span>
         </div>
         <div class="settings-section-body">
-          <p class="about-version">BookSelf v1.2.0 — Local-first newsletter reader</p>
+          <p class="about-version" id="about-version">BookSelf — Local-first newsletter reader</p>
           <p style="font-size:0.86rem;color:var(--text-dim);margin-top:8px">
             Built with Python + Flask + SQLite. All data stays on your machine.
           </p>
+          <label id="autostart-row" style="display:none;align-items:center;gap:10px;margin-top:14px;cursor:pointer;font-size:0.93rem">
+            <input type="checkbox" id="autostart-chk">
+            <span>Launch BookSelf when you log in to your Mac</span>
+          </label>
         </div><!-- /settings-section-body -->
       </div>
     </div><!-- /state-settings -->
@@ -2257,6 +2294,28 @@ function renderSettings() {
       localStorage.setItem(`settings-collapse-${key}`, isOpen ? 'open' : 'closed');
     });
   });
+
+  // ── About: live version + launch-at-login toggle ─────────────────
+  fetch('/api/version').then(r => r.json()).then(v => {
+    const el = document.getElementById('about-version');
+    if (el) el.textContent = `BookSelf v${v.version} — Local-first newsletter reader${v.packaged ? '' : ' (dev mode)'}`;
+  }).catch(() => {});
+  fetch('/api/autostart').then(r => r.json()).then(a => {
+    const row = document.getElementById('autostart-row');
+    const chk = document.getElementById('autostart-chk');
+    if (!row || !a.supported) return;
+    row.style.display = 'flex';
+    chk.checked = a.enabled;
+    chk.addEventListener('change', async () => {
+      const res = await fetch('/api/autostart', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: chk.checked }),
+      });
+      const d = await res.json();
+      if (d.error) { alert(d.error); chk.checked = !chk.checked; }
+    });
+  }).catch(() => {});
 
   // ── Master settings collapser ────────────────────────────────────
   const masterHeader  = canvas.querySelector('#settings-master-header');

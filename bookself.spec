@@ -1,36 +1,34 @@
 # ─────────────────────────────────────────────────────────────────
 # bookself/bookself.spec
-# PyInstaller packaging configuration.
+# PyInstaller packaging configuration → BookSelf.app
 #
-# This bundles BookSelf into a single standalone executable so users
-# don't need Python installed.
+# Build locally:
+#   pip install pyinstaller pywebview
+#   pyinstaller bookself.spec --noconfirm
+#   → dist/BookSelf.app  (drag to /Applications)
 #
-# To build (after installing pyinstaller):
-#   pip install pyinstaller
-#   pyinstaller bookself.spec
+# CI builds this automatically on every version tag push
+# (see .github/workflows/release.yml).
 #
-# Output:
-#   dist/bookself        (folder containing the app)
-#   dist/bookself.app    (on macOS — drag to Applications)
-#   dist/bookself.exe    (on Windows — run directly)
-#
-# NOTE: credentials.json, token.json, config.yaml, and the
-# newsletters/ folder all stay OUTSIDE the executable, in the same
-# folder the user runs the app from.
-#
-# TODO (v0.2): Test and finalize this spec. Currently a stub.
+# Data separation:
+#   Bundled INSIDE the app (read-only): templates, static, default configs
+#   User data OUTSIDE the app:  ~/Library/Application Support/BookSelf/
+#   Credentials:                ~/.config/bookself/  (never bundled)
 # ─────────────────────────────────────────────────────────────────
+
+import os
 
 block_cipher = None
 
 a = Analysis(
-    ['app.py'],                         # Entry point (the Flask server)
+    ['desktop.py'],                    # Native shell entry (window + multi-call dispatch)
     pathex=['.'],
     binaries=[],
     datas=[
-        ('app/templates', 'app/templates'),   # Include HTML templates
-        ('app/static', 'app/static'),          # Include CSS and JS
-        ('config.yaml', '.'),                  # Include default config
+        ('app/templates', 'app/templates'),
+        ('app/static', 'app/static'),
+        ('config.yaml', '.'),          # Default config, copied to data dir on first run
+        ('ai_config.yaml', '.'),       # Default AI config, same
     ],
     hiddenimports=[
         'googleapiclient',
@@ -38,19 +36,18 @@ a = Analysis(
         'google.auth.transport.requests',
         'google_auth_oauthlib',
         'flask',
-        'pyyaml',
         'yaml',
         'bs4',
-        'lxml',
         'requests',
         'sqlite3',
+        'webview',
+        'fetch',                       # Imported dynamically by --run-fetch dispatch
+        'catalog',                     # Imported dynamically by --run-catalog dispatch
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
+    excludes=['lxml'],                 # Optional dep; html.parser fallback keeps build lean
     cipher=block_cipher,
     noarchive=False,
 )
@@ -62,16 +59,16 @@ exe = EXE(
     a.scripts,
     [],
     exclude_binaries=True,
-    name='bookself',
+    name='BookSelf',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    console=True,                       # Show terminal output (useful for debugging)
+    upx=False,
+    console=False,                     # Windowed app — no terminal
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity=None,            # TODO: add Mac code signing for v0.2
+    codesign_identity=None,            # Unsigned — right-click → Open on first launch
     entitlements_file=None,
 )
 
@@ -81,15 +78,19 @@ coll = COLLECT(
     a.zipfiles,
     a.datas,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='bookself',
+    upx=False,
+    name='BookSelf',
 )
 
-# macOS .app bundle (ignored on Windows)
 app = BUNDLE(
     coll,
     name='BookSelf.app',
-    icon=None,                         # TODO: add icon for v0.2
-    bundle_identifier='com.bookself.app',
+    icon='packaging/BookSelf.icns' if os.path.exists('packaging/BookSelf.icns') else None,
+    bundle_identifier='com.gitwreckedav.bookself',
+    info_plist={
+        'NSHighResolutionCapable': True,
+        'CFBundleShortVersionString': '1.3.0',
+        'CFBundleName': 'BookSelf',
+        'NSHumanReadableCopyright': 'Local-first newsletter library',
+    },
 )
