@@ -39,12 +39,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 # ── Import BookSelf modules ───────────────────────────────────────
-PROJECT_ROOT = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(Path(__file__).parent))
 
-from bookself.config_loader import load_config
+from bookself.config_loader import load_config, get_project_root
 from bookself.gmail_client import get_gmail_service, get_full_message
 from bookself.email_parser import extract_html_and_attachments
+
+# Frozen-aware: repo folder in dev; ~/Library/Application Support/BookSelf
+# in the packaged app. Never derive data paths from __file__ — inside the
+# .app that resolves into the bundle and sync breaks.
+PROJECT_ROOT = get_project_root()
 
 
 # ── Storage paths ─────────────────────────────────────────────────

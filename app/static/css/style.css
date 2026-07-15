@@ -609,6 +609,23 @@ html, body {
 
 .nav-publication {
   margin-bottom: 4px;
+  padding-bottom: 4px;
+}
+/* Subtle gradient separator between newsletter families — fades at the
+   edges so it doesn't read as a harsh line cutting across the pane */
+.nav-publication + .nav-publication {
+  border-top: none;
+  position: relative;
+  padding-top: 4px;
+}
+.nav-publication + .nav-publication::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 8px;
+  right: 8px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.09) 20%, rgba(255,255,255,0.09) 80%, transparent 100%);
 }
 
 /* Publication header row */
@@ -778,7 +795,13 @@ html, body {
 }
 
 #last-sync-label { margin-right: 4px; }
-#last-sync-value { color: var(--text-main); font-variant-numeric: tabular-nums; }
+#last-sync-value {
+  color: var(--text-main);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 #last-sync-value.syncing { color: var(--accent); animation: syncpulse 1.2s ease-in-out infinite; }
 @keyframes syncpulse { 0%,100% { opacity:1 } 50% { opacity:0.45 } }
 

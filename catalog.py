@@ -27,12 +27,18 @@ from datetime import datetime
 from pathlib import Path
 
 # ── Import BookSelf modules ───────────────────────────────────────
-PROJECT_ROOT = Path(__file__).parent
-sys.path.insert(0, str(PROJECT_ROOT))
+sys.path.insert(0, str(Path(__file__).parent))
 
 import argparse
 
-from bookself.config_loader import load_config, get_db_path, get_newsletters_dir, get_assets_dir
+from bookself.config_loader import (
+    load_config, get_db_path, get_newsletters_dir, get_assets_dir, get_project_root
+)
+
+# Frozen-aware: repo folder in dev; ~/Library/Application Support/BookSelf
+# in the packaged app. Never derive data paths from __file__ — inside the
+# .app that resolves into the bundle and cataloging breaks.
+PROJECT_ROOT = get_project_root()
 from bookself.database import (
     init_db, newsletter_exists, insert_newsletter, update_fts, get_total_count,
     purge_before_date

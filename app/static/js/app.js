@@ -596,7 +596,9 @@ function initPaneResize() {
   // Restore saved width
   const saved = localStorage.getItem('leftPaneWidth');
   if (saved && !isNaN(parseInt(saved))) {
-    currentWidth = parseInt(saved);
+    // Clamp restored width too — an old saved value below the new minimum
+    // would resurrect the squished-pane bug on every launch
+    currentWidth = Math.max(230, Math.min(600, parseInt(saved)));
     document.documentElement.style.setProperty('--left-pane-width', currentWidth + 'px');
   }
 
@@ -624,7 +626,7 @@ function initPaneResize() {
     const rect   = mainLayout.getBoundingClientRect();
     const viewPx = e.clientX - rect.left;
     const cssPx  = scale === 1.0 ? viewPx : viewPx / scale;
-    const newWidth = Math.max(160, Math.min(600, cssPx));
+    const newWidth = Math.max(230, Math.min(600, cssPx));
 
     currentWidth = newWidth;
     document.documentElement.style.setProperty('--left-pane-width', newWidth + 'px');
@@ -2945,6 +2947,9 @@ async function runSync(mode, opts = {}) {
     if (footerSyncBtn) { footerSyncBtn.disabled = false; footerSyncBtn.classList.remove('syncing'); }
     // Ensure syncing indicator is always cleared (covers error/disconnect paths)
     if (syncValueEl) syncValueEl.classList.remove('syncing');
+    // On failure the text would stay "⟳ Syncing…" forever — restore the real
+    // last-synced timestamp regardless of how the stream ended.
+    await loadStatus();
   }
 }
 

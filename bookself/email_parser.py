@@ -274,13 +274,15 @@ def clean_html(html_content, img_url_map=None):
     # A tracking pixel is a 1×1 image that newsletters use to detect if you opened the email.
     # We remove these for privacy. This doesn't affect visible content.
     for img in soup.find_all('img'):
-        width = img.get('width', '')
-        height = img.get('height', '')
         try:
+            width = img.get('width', '')
+            height = img.get('height', '')
             if int(width) == 1 and int(height) == 1:
                 img.decompose()
                 continue
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, AttributeError):
+            # AttributeError: html.parser can produce tags with attrs=None
+            # on malformed markup — skip rather than fail the whole edition
             pass
 
     # ── Add base target="_blank" ──────────────────────────────────

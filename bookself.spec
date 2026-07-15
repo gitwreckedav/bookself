@@ -45,13 +45,14 @@ a = Analysis(
         'requests',
         'sqlite3',
         'webview',
+        'lxml',                        # Bundle it — html.parser fallback chokes on malformed tags
         'fetch',                       # Imported dynamically by --run-fetch dispatch
         'catalog',                     # Imported dynamically by --run-catalog dispatch
     ],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['lxml'],                 # Optional dep; html.parser fallback keeps build lean
+    excludes=[],
     cipher=block_cipher,
     noarchive=False,
 )

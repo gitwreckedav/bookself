@@ -33,7 +33,7 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 
 # ── App version — single source of truth ─────────────────────────
 # The GitHub release tag must match this (v1.3.0 ↔ APP_VERSION 1.3.0).
-APP_VERSION = '1.3.1'
+APP_VERSION = '1.3.2'
 GITHUB_REPO = 'gitwreckedav/bookself'
 
 # ── Path setup ────────────────────────────────────────────────────
