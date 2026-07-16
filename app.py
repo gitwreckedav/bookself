@@ -33,7 +33,7 @@ from flask import Flask, jsonify, request, Response, send_from_directory
 
 # ── App version — single source of truth ─────────────────────────
 # The GitHub release tag must match this (v1.3.0 ↔ APP_VERSION 1.3.0).
-APP_VERSION = '1.3.2'
+APP_VERSION = '1.3.3'
 GITHUB_REPO = 'gitwreckedav/bookself'
 
 # ── Path setup ────────────────────────────────────────────────────
@@ -260,6 +260,20 @@ def api_newsletters():
         offset=offset,
         sort=sort
     )
+
+    # Flag editions that have a generated AI summary (stored in the
+    # .notes.md sidecar) so the nav tree can show a quick-access mark
+    for r in results:
+        r['has_ai_summary'] = False
+        fp = r.get('file_path')
+        if fp:
+            notes_path = (PROJECT_ROOT / fp).with_suffix('.notes.md')
+            if notes_path.exists():
+                try:
+                    _, ai = _parse_notes(notes_path.read_text(encoding='utf-8'))
+                    r['has_ai_summary'] = bool(ai.strip())
+                except Exception:
+                    pass
     return jsonify(results)
 
 

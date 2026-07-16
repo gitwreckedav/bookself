@@ -611,6 +611,10 @@ function initPaneResize() {
     leftPane.style.transition = 'none';
     document.body.style.cursor     = 'col-resize';
     document.body.style.userSelect = 'none';
+    // ── The reader iframe swallows mousemove the instant the cursor crosses
+    //    it, freezing the drag mid-motion. Disable its hit-testing while
+    //    dragging; restored on mouseup.
+    document.querySelectorAll('iframe').forEach(f => { f.style.pointerEvents = 'none'; });
     e.preventDefault();
   });
 
@@ -639,6 +643,7 @@ function initPaneResize() {
     leftPane.style.transition = '';   // restore CSS transition after drag ends
     document.body.style.cursor     = '';
     document.body.style.userSelect = '';
+    document.querySelectorAll('iframe').forEach(f => { f.style.pointerEvents = ''; });
     localStorage.setItem('leftPaneWidth', currentWidth);
   });
 }
@@ -934,6 +939,7 @@ function renderEditionsHTML(editions, pub, series) {
         <span class="nav-edition-date">${dateLabel}</span>
         <span class="nav-edition-title">${escHtml(titleShort)}</span>
         <span class="nav-done-tick">✓</span>
+        ${ed.has_ai_summary ? '<span class="nav-ai-mark" title="AI summary exists — click to open it">⚡</span>' : ''}
       </div>
     `;
   }).join('');
@@ -945,6 +951,14 @@ function attachEditionHandlers(containerEl) {
       clearActiveNav();
       el.classList.add('active');
       renderNewsletterReader(parseInt(el.dataset.id));
+    });
+    // ⚡ mark: open the article AND jump straight to its AI summary
+    el.querySelector('.nav-ai-mark')?.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      clearActiveNav();
+      el.classList.add('active');
+      await renderNewsletterReader(parseInt(el.dataset.id));
+      document.getElementById('btn-reader-summary')?.click();
     });
   });
 }

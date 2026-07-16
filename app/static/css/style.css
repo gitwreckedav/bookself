@@ -757,6 +757,25 @@ html, body {
   visibility: visible;
 }
 
+/* ⚡ AI-summary mark — sits right of the done tick; confirms a summary
+   exists and deep-links to it on click */
+.nav-ai-mark {
+  flex-shrink: 0;
+  font-size: 0.72rem;
+  color: var(--accent);
+  width: 16px;
+  text-align: center;
+  cursor: pointer;
+  border-radius: 3px;
+  opacity: 0.75;
+  transition: opacity 0.12s, background 0.12s, transform 0.08s;
+}
+.nav-ai-mark:hover {
+  opacity: 1;
+  background: rgba(255,255,255,0.1);
+  transform: scale(1.15);
+}
+
 /* Sort toggle button inside nav tree */
 .nav-sort-toggle {
   padding: 4px 16px;
@@ -806,12 +825,14 @@ html, body {
 @keyframes syncpulse { 0%,100% { opacity:1 } 50% { opacity:0.45 } }
 
 #footer-buttons {
-  display: flex;
+  /* Grid that wraps to 2×2 when the pane is narrow — buttons keep a
+     minimum readable width instead of squishing/hiding their labels */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
   gap: 8px;
 }
 
 .footer-btn {
-  flex: 1;
   background: var(--bg-item);
   border: 1px solid var(--border);
   color: var(--text-main);
