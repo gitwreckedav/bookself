@@ -106,7 +106,9 @@ html, body {
   box-shadow: 0 1px 0 rgba(0,0,0,0.4), inset 0 2px 4px rgba(0,0,0,0.35);
   border-bottom-width: 1px;
 }
-.nav-btn:disabled { color: var(--border); cursor: default; opacity: 0.4; }
+/* Disabled = dimmed but still legible. var(--border) was darker than the
+   button face itself, which made the arrow glyph fully invisible. */
+.nav-btn:disabled { color: var(--text-dim); cursor: default; opacity: 0.35; }
 
 /* Search input fills remaining space in the header */
 #search-input {
@@ -795,14 +797,16 @@ html, body {
 
 /* ── Left pane footer ──────────────────────────────────────────── */
 #left-footer {
-  height: var(--footer-height);
+  /* min-height instead of fixed height: when the button grid wraps to a
+     second row at narrow widths, the footer must grow — a fixed 72px was
+     cropping the wrapped row (Settings button half-hidden) */
+  min-height: var(--footer-height);
   border-top: 1px solid var(--border);
   padding: 8px 12px;
   display: flex;
   flex-direction: column;
   gap: 6px;
   flex-shrink: 0;
-  overflow: hidden;
 }
 
 #last-sync-line {
@@ -828,7 +832,9 @@ html, body {
   /* Grid that wraps to 2×2 when the pane is narrow — buttons keep a
      minimum readable width instead of squishing/hiding their labels */
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+  /* 88px minimum → wraps as a symmetric 2×2 at narrow pane widths
+     instead of an awkward 3+1 with one orphaned button */
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
   gap: 8px;
 }
 
@@ -2914,3 +2920,72 @@ html[data-font-scale="5"] { font-size: 18px; }
   padding: 4px 8px;
 }
 .update-banner-dismiss:hover { color: var(--text-main); }
+
+/* ── Daily Briefs — nav section + reader ─────────────────────────── */
+.briefs-section {
+  margin: 4px 0 8px 0;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 6px;
+}
+.briefs-gen-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 4px 8px;
+}
+.brief-date-input {
+  flex: 1;
+  min-width: 0;
+  height: 30px;              /* match .brief-gen-btn so the row is symmetric */
+  box-sizing: border-box;
+  background: rgba(0,0,0,0.35);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  padding: 3px 6px;
+  color-scheme: dark;
+}
+.brief-gen-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  background: var(--btn-secondary-bg);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-bottom: 2px solid rgba(0,0,0,0.45);
+  box-shadow: 0 2px 0 rgba(0,0,0,0.4);
+  border-radius: 4px;
+  color: var(--text-main);
+  font-size: 0.82rem;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: transform 0.08s, box-shadow 0.08s;
+}
+.brief-gen-btn:hover { transform: translateY(-1px); }
+.brief-gen-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.briefs-status {
+  font-size: 0.79rem;
+  color: var(--text-dim);
+  padding: 2px 8px;
+  min-height: 16px;
+}
+.brief-article-count {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+.brief-canvas {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 32px 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+.brief-header { margin-bottom: 20px; border-bottom: 2px solid var(--border); padding-bottom: 14px; }
+.brief-title  { font-size: 1.4rem; font-weight: 700; color: var(--text-main); margin-bottom: 6px; }
+.brief-meta   { font-size: 0.86rem; color: var(--text-dim); margin-bottom: 12px; }
+.brief-actions { display: flex; gap: 8px; }
+.brief-content { font-size: 1rem; line-height: 1.65; color: var(--text-main); }
+.brief-content h2 { font-size: 1.1rem; margin: 18px 0 8px 0; color: var(--accent); }
+.brief-content p  { margin-bottom: 10px; }

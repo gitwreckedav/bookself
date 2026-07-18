@@ -678,6 +678,152 @@ async function loadStatus() {
 // NAV TREE — BUILD AND RENDER
 // ══════════════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════════
+// DAILY BRIEFS — cross-article AI digest per day, own nav section
+// ══════════════════════════════════════════════════════════════════
+
+let briefsPollTimer = null;
+
+function renderBriefsSectionHTML() {
+  const isOpen = localStorage.getItem('briefs-section-open') !== 'closed';
+  return `
+    <div class="briefs-section">
+      <div class="filter-header" id="briefs-header">
+        <span class="filter-chevron ${isOpen ? 'open' : ''}">▶</span>
+        <span class="filter-bar-label">☀ Daily Briefs</span>
+        <span class="filter-bar-summary" id="briefs-count"></span>
+      </div>
+      <div class="filter-body ${isOpen ? '' : 'hidden'}" id="briefs-body">
+        <div class="briefs-gen-row">
+          <input type="date" id="brief-date-input" class="brief-date-input"
+                 value="${new Date().toISOString().slice(0, 10)}">
+          <button class="brief-gen-btn" id="brief-gen-btn">⚡ Generate</button>
+        </div>
+        <div class="briefs-status" id="briefs-status"></div>
+        <div id="briefs-list"><div class="nav-loading" style="font-size:12px;padding:4px 8px">Loading…</div></div>
+      </div>
+    </div>`;
+}
+
+function attachBriefsHandlers() {
+  const header = document.getElementById('briefs-header');
+  header?.addEventListener('click', () => {
+    const body    = document.getElementById('briefs-body');
+    const chevron = header.querySelector('.filter-chevron');
+    const nowOpen = body.classList.toggle('hidden') === false;
+    chevron.classList.toggle('open', nowOpen);
+    localStorage.setItem('briefs-section-open', nowOpen ? 'open' : 'closed');
+  });
+
+  document.getElementById('brief-gen-btn')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const date = document.getElementById('brief-date-input')?.value;
+    const res  = await fetch('/api/briefs/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date }),
+    });
+    const d = await res.json();
+    if (!d.ok) {
+      const st = document.getElementById('briefs-status');
+      if (st) st.textContent = '❌ ' + (d.error || 'Could not start');
+      return;
+    }
+    _pollBriefStatus();
+  });
+}
+
+function _pollBriefStatus() {
+  clearInterval(briefsPollTimer);
+  briefsPollTimer = setInterval(async () => {
+    try {
+      const s  = await (await fetch('/api/briefs/status')).json();
+      const st = document.getElementById('briefs-status');
+      const btn = document.getElementById('brief-gen-btn');
+      if (s.running) {
+        if (btn) btn.disabled = true;
+        if (st) st.textContent = s.total
+          ? `⟳ ${s.stage}… ${s.done}/${s.total}`
+          : `⟳ ${s.stage}…`;
+      } else {
+        clearInterval(briefsPollTimer);
+        if (btn) btn.disabled = false;
+        if (st) st.textContent = s.error ? '❌ ' + s.error : '✅ Brief ready';
+        if (!s.error) {
+          refreshBriefsList();
+          if (s.date) renderBriefReader(s.date);
+        }
+      }
+    } catch (e) { clearInterval(briefsPollTimer); }
+  }, 2000);
+}
+
+async function refreshBriefsList() {
+  const listEl = document.getElementById('briefs-list');
+  if (!listEl) return;
+  try {
+    const briefs = await (await fetch('/api/briefs')).json();
+    const countEl = document.getElementById('briefs-count');
+    if (countEl) countEl.textContent = briefs.length ? `${briefs.length}` : 'none yet';
+    if (!briefs.length) {
+      listEl.innerHTML = '<div class="nav-loading" style="font-size:12px;padding:4px 8px">No briefs yet — pick a date and Generate.</div>';
+      return;
+    }
+    listEl.innerHTML = briefs.map(b => `
+      <div class="nav-edition brief-row" data-brief-date="${b.date}">
+        <span class="nav-edition-date">${formatDateShort(b.date)}</span>
+        <span class="nav-edition-title">Daily Brief</span>
+        <span class="brief-article-count">${b.articles ?? '?'} 📄</span>
+      </div>`).join('');
+    listEl.querySelectorAll('.brief-row').forEach(el => {
+      el.addEventListener('click', () => {
+        clearActiveNav();
+        el.classList.add('active');
+        renderBriefReader(el.dataset.briefDate);
+      });
+    });
+  } catch (e) {
+    listEl.innerHTML = '<div class="nav-loading" style="font-size:12px;padding:4px 8px">Could not load briefs.</div>';
+  }
+}
+
+async function renderBriefReader(dateStr) {
+  const res = await fetch(`/api/briefs/${dateStr}`);
+  if (!res.ok) return;
+  const b = await res.json();
+  const meta = b.meta || {};
+  canvas.innerHTML = `
+    <div class="brief-canvas">
+      <div class="brief-header">
+        <h1 class="brief-title">☀ Daily Brief — ${dateStr}</h1>
+        <div class="brief-meta">
+          ${meta.articles || '?'} articles · Generated ${meta.generated || '—'} · ${meta.model || ''}
+        </div>
+        <div class="brief-actions">
+          <button class="btn-secondary" id="brief-regen-btn">↺ Re-generate</button>
+          <button class="btn-secondary" id="brief-delete-btn">🗑 Delete</button>
+        </div>
+      </div>
+      <div class="brief-content">${renderMarkdown(b.content)}</div>
+    </div>`;
+  document.getElementById('brief-regen-btn')?.addEventListener('click', async () => {
+    await fetch('/api/briefs/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ date: dateStr }),
+    });
+    _pollBriefStatus();
+    const st = document.getElementById('briefs-status');
+    if (st) st.textContent = '⟳ Starting…';
+  });
+  document.getElementById('brief-delete-btn')?.addEventListener('click', async () => {
+    if (!confirm(`Delete the brief for ${dateStr}? The articles themselves are untouched.`)) return;
+    await fetch(`/api/briefs/${dateStr}`, { method: 'DELETE' });
+    refreshBriefsList();
+    renderEmpty();
+  });
+}
+
 async function buildNavTree() {
   const treeEl = document.getElementById('nav-tree');
 
@@ -696,11 +842,13 @@ async function buildNavTree() {
     navData.seriesMap = {};
     navData.editionsMap = {};
 
-    // Render the tree HTML
-    treeEl.innerHTML = renderNavTreeHTML(publications);
+    // Render the tree HTML — Daily Briefs section sits above the publications
+    treeEl.innerHTML = renderBriefsSectionHTML() + renderNavTreeHTML(publications);
 
     // Attach click handlers to all nav items
     attachNavHandlers();
+    attachBriefsHandlers();
+    refreshBriefsList();
 
   } catch (err) {
     treeEl.innerHTML = `<div class="nav-loading" style="color:#e94560">
@@ -741,7 +889,7 @@ function buildFilteredNavTree(results) {
           ${items.map(item => `
             <div class="nav-edition nav-filter-result" data-id="${item.id}">
               <span class="nav-edition-date">${formatDateShort(item.date_received)}</span>
-              <span class="nav-edition-title">${escHtml(item.title.length > 40 ? item.title.slice(0, 40) + '…' : item.title)}</span>
+              <span class="nav-edition-title">${escHtml(item.title)}</span>
             </div>
           `).join('')}
         </div>
@@ -922,7 +1070,9 @@ function renderEditionsHTML(editions, pub, series) {
 
   return filtered.map(ed => {
     const dateLabel  = formatDateShort(ed.date_received);
-    const titleShort = ed.title.length > 45 ? ed.title.slice(0, 45) + '…' : ed.title;
+    // No JS truncation — .nav-edition-title has CSS ellipsis, which adapts
+    // to the actual pane width instead of a fixed character count
+    const titleShort = ed.title;
     const previewIcon = ed.is_preview ? '<span class="nav-preview-icon">🔒</span>' : '';
     const isDone = ed.is_read ? 1 : 0;
 

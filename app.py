@@ -21,6 +21,7 @@
 
 import sys
 import os
+import re
 import json
 import platform
 import subprocess
@@ -1439,6 +1440,222 @@ def api_reveal():
         return jsonify({'ok': True, 'opened': str(target)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ══════════════════════════════════════════════════════════════════
+# API — DAILY BRIEFS
+# One cross-article AI digest per calendar day (by date received).
+# Stored as markdown files in briefs/ inside the data root — they are
+# user data, so they survive app updates like everything else.
+# ══════════════════════════════════════════════════════════════════
+
+BRIEFS_DIR = PROJECT_ROOT / 'briefs'
+
+# Progress of the (single) background generation job — polled by the UI
+_brief_status = {
+    'running': False, 'date': None, 'stage': '',
+    'done': 0, 'total': 0, 'error': None,
+}
+
+
+def _ai_complete(prompt, ai_cfg):
+    """
+    One-shot completion via the configured provider.
+    Raises RuntimeError with a user-facing message on any failure.
+    """
+    provider = ai_cfg.get('provider', 'ollama')
+    model    = ai_cfg.get('model', '').strip()
+    base_url = ai_cfg.get('base_url', 'http://localhost:11434')
+    api_key  = ai_cfg.get('api_key', '') or os.environ.get('AI_API_KEY', '')
+
+    if not model:
+        raise RuntimeError('No AI model configured. Go to Settings → AI Summary, '
+                           'pick a model, and click Save.')
+    try:
+        if provider == 'ollama':
+            return _call_ollama(prompt, model, base_url)
+        if provider in ('openai', 'custom'):
+            url = base_url if provider == 'custom' else 'https://api.openai.com/v1'
+            return _call_openai_compatible(prompt, model, url, api_key)
+        if provider == 'anthropic':
+            return _call_anthropic(prompt, model, api_key)
+        raise RuntimeError(f"Unknown AI provider '{provider}'")
+    except RuntimeError:
+        raise
+    except Exception as e:
+        raise RuntimeError(f'AI call failed ({provider}/{model}): {e}')
+
+
+def _articles_for_date(date_str):
+    """All newsletters received on date_str (YYYY-MM-DD), oldest first."""
+    import sqlite3
+    con = sqlite3.connect(str(db_path))
+    con.row_factory = sqlite3.Row
+    rows = con.execute(
+        "SELECT id, title, publication, series, file_path, date_received "
+        "FROM newsletters WHERE date(date_received) = ? ORDER BY date_received ASC",
+        (date_str,)
+    ).fetchall()
+    con.close()
+    return [dict(r) for r in rows]
+
+
+def _get_or_make_summary(record, ai_cfg):
+    """
+    Per-article summary for the brief. Reuses the stored AI summary from the
+    .notes.md sidecar when present; otherwise generates one and saves it
+    (so the ⚡ mark appears and future briefs are instant).
+    """
+    html_path  = PROJECT_ROOT / record['file_path']
+    notes_path = html_path.with_suffix('.notes.md')
+
+    if notes_path.exists():
+        try:
+            _, ai = _parse_notes(notes_path.read_text(encoding='utf-8'))
+            body = re.sub(r'^Generated:[^\n]+\n\n', '', ai.strip())
+            if body.strip():
+                return body.strip()
+        except Exception:
+            pass
+
+    if not html_path.exists():
+        return None
+
+    max_words = int(ai_cfg.get('max_words', 6000))
+    text = _truncate_to_words(
+        _strip_html_to_text(html_path.read_text(encoding='utf-8', errors='replace')),
+        max_words,
+    )
+    instruction = ai_cfg.get('summary_prompt', '').strip() or _DEFAULT_SUMMARY_PROMPT
+    summary = _ai_complete(
+        f"{instruction}\n\nArticle title: {record['title']}\n"
+        f"Publication: {record['publication']}\n\nArticle text:\n{text}",
+        ai_cfg,
+    ).strip()
+
+    # Persist to the sidecar exactly like the per-article Generate button does
+    try:
+        ts = datetime.now().strftime('%d %b %Y, %H:%M')
+        header = f"Generated: {ts} · {ai_cfg.get('model','')} via {ai_cfg.get('provider','')}"
+        my_notes = ''
+        if notes_path.exists():
+            my_notes, _ = _parse_notes(notes_path.read_text(encoding='utf-8'))
+        notes_path.write_text(_build_notes(my_notes, f"{header}\n\n{summary}"), encoding='utf-8')
+    except Exception:
+        pass
+    return summary
+
+
+_BRIEF_SYNTHESIS_PROMPT = (
+    "You are writing a daily brief that collates multiple newsletter articles "
+    "into ONE coherent digest. Rules:\n"
+    "- Start with a single 2-3 sentence 'Top of the day' overview\n"
+    "- Then one titled section per article (## Article title — Publication), "
+    "each 60-120 words keeping every key number, name, and causal chain\n"
+    "- Where articles relate to each other, say so explicitly\n"
+    "- No meta-commentary, no preamble, no sign-off. Output markdown only."
+)
+
+
+def _generate_brief_worker(date_str):
+    """Background thread: per-article summaries → cross-article synthesis → briefs/<date>.md"""
+    global _brief_status
+    try:
+        ai_cfg   = load_ai_config()
+        articles = _articles_for_date(date_str)
+        if not articles:
+            _brief_status.update(running=False, error=f'No newsletters received on {date_str}.')
+            return
+
+        _brief_status.update(total=len(articles), done=0, stage='Summarizing articles')
+        parts = []
+        for rec in articles:
+            summ = _get_or_make_summary(rec, ai_cfg)
+            _brief_status['done'] += 1
+            if summ:
+                parts.append(f"Article: {rec['title']} — {rec['publication']}\n{summ}")
+
+        if not parts:
+            _brief_status.update(running=False, error='No article content could be summarized.')
+            return
+
+        _brief_status.update(stage='Writing the day brief')
+        brief_md = _ai_complete(
+            f"{_BRIEF_SYNTHESIS_PROMPT}\n\nDate: {date_str}\n\n" + '\n\n---\n\n'.join(parts),
+            ai_cfg,
+        ).strip()
+
+        BRIEFS_DIR.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now().strftime('%d %b %Y, %H:%M')
+        meta = (
+            f"---\ndate: {date_str}\narticles: {len(articles)}\n"
+            f"generated: {ts}\nmodel: {ai_cfg.get('model','')} via {ai_cfg.get('provider','')}\n---\n\n"
+        )
+        (BRIEFS_DIR / f'{date_str}.md').write_text(meta + brief_md, encoding='utf-8')
+        _brief_status.update(running=False, stage='done', error=None)
+    except Exception as e:
+        _brief_status.update(running=False, error=str(e))
+
+
+@app.route('/api/briefs/generate', methods=['POST'])
+def api_briefs_generate():
+    """Start brief generation for a date (default: today). One job at a time."""
+    if _brief_status['running']:
+        return jsonify({'ok': False, 'error': 'A brief is already being generated.'}), 409
+    body = request.get_json(silent=True) or {}
+    date_str = (body.get('date') or datetime.now().strftime('%Y-%m-%d')).strip()
+    try:
+        datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'ok': False, 'error': f"Invalid date '{date_str}' — use YYYY-MM-DD."}), 400
+
+    _brief_status.update(running=True, date=date_str, stage='Starting', done=0, total=0, error=None)
+    threading.Thread(target=_generate_brief_worker, args=(date_str,), daemon=True).start()
+    return jsonify({'ok': True, 'date': date_str})
+
+
+@app.route('/api/briefs/status')
+def api_briefs_status():
+    return jsonify(_brief_status)
+
+
+@app.route('/api/briefs')
+def api_briefs_list():
+    """List existing briefs, newest first: [{date, articles, generated}]"""
+    out = []
+    if BRIEFS_DIR.exists():
+        for f in sorted(BRIEFS_DIR.glob('*.md'), reverse=True):
+            entry = {'date': f.stem, 'articles': None, 'generated': None}
+            try:
+                head = f.read_text(encoding='utf-8')[:300]
+                m = re.search(r'articles: (\d+)', head)
+                g = re.search(r'generated: ([^\n]+)', head)
+                if m: entry['articles'] = int(m.group(1))
+                if g: entry['generated'] = g.group(1)
+            except Exception:
+                pass
+            out.append(entry)
+    return jsonify(out)
+
+
+@app.route('/api/briefs/<date_str>', methods=['GET', 'DELETE'])
+def api_briefs_get(date_str):
+    if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', date_str):
+        return jsonify({'error': 'Bad date format'}), 400
+    path = BRIEFS_DIR / f'{date_str}.md'
+    if not path.exists():
+        return jsonify({'error': f'No brief for {date_str}'}), 404
+    if request.method == 'DELETE':
+        path.unlink()
+        return jsonify({'ok': True})
+    content = path.read_text(encoding='utf-8')
+    # Split the metadata front-matter from the body
+    m = re.match(r'^---\n(.*?)\n---\n\n(.*)$', content, flags=re.DOTALL)
+    meta_raw, body = (m.group(1), m.group(2)) if m else ('', content)
+    meta = dict(
+        line.split(': ', 1) for line in meta_raw.splitlines() if ': ' in line
+    ) if meta_raw else {}
+    return jsonify({'date': date_str, 'meta': meta, 'content': body})
 
 
 # ══════════════════════════════════════════════════════════════════
