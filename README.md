@@ -2,6 +2,10 @@
 
 **A local-first newsletter reader.** Pulls your newsletters from Gmail, organises them on disk, and serves a clean two-pane reading UI — entirely on your machine. No cloud, no subscriptions, no tracking.
 
+> **Contributing / continuing development?** Start at [AGENTS.md](AGENTS.md) — it indexes the living
+> docs in [docs/](docs/) (PRD with full decision log, backend/frontend/devops references). Built with
+> Claude Code.
+
 ---
 
 ## What it does
